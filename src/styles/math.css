@@ -1,0 +1,114 @@
+/* KaTeX Math Styling */
+.katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1em 0;
+  text-align: center;
+}
+
+.katex {
+  font-size: 1.1em;
+  text-rendering: optimizeLegibility;
+  line-height: 1.2;
+}
+
+/* Math block styling */
+.math-block {
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  margin: 1.5rem 0;
+  padding: 1rem;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+  text-align: center;
+}
+
+/* Variable definition styling */
+.variable-definition {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-left: 3px solid #3b82f6;
+  border-radius: 4px;
+}
+
+.variable-definition p {
+  margin: 0.5rem 0;
+  line-height: 1.6;
+}
+
+/* Inline math styling */
+.katex-inline {
+  padding: 0.2em 0;
+  font-size: 1.1em;
+}
+
+/* Dark mode support */
+[data-theme='dark'] {
+  .math-block {
+    background: rgba(255, 255, 255, 0.05);
+  }
+  
+  .variable-definition {
+    background: rgba(255, 255, 255, 0.05);
+    border-left-color: #60a5fa;
+  }
+  
+  .katex {
+    color: #e5e7eb;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .katex {
+    font-size: 1em;
+  }
+  
+  .math-block {
+    padding: 0.75rem;
+    margin: 1rem 0;
+  }
+  
+  .variable-definition {
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+  }
+}
+
+/* Print styles */
+@media print {
+  .math-block,
+  .variable-definition {
+    background: none;
+    border: 1px solid #e5e7eb;
+    box-shadow: none;
+  }
+}
+
+/* Equation numbering */
+.equation-number {
+  float: right;
+  color: #666;
+}
+
+/* Ensure proper spacing in equations */
+.katex .mspace {
+  margin: 0 0.25em;
+}
+
+/* Improve operator spacing */
+.katex .mbin,
+.katex .mrel {
+  margin: 0 0.25em;
+}
+
+/* Improve fraction display */
+.katex .mfrac {
+  margin: 0 0.2em;
+}
+
+/* Improve subscript and superscript positioning */
+.katex .msupsub {
+  margin: 0 0.1em;
+} 

@@ -1,0 +1,10 @@
+# Ignore common files and directories
+node_modules/
+.git/
+.vscode/
+*.log
+.DS_Store
+
+# Explicitly allow all env files
+!env*
+!env.local 

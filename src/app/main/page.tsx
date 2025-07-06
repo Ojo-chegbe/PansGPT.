@@ -1,0 +1,795 @@
+"use client";
+import Image from "next/image";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React from "react";
+import { type ChatMessage } from '@/lib/google-ai';
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
+import { ClipboardIcon, PencilIcon } from '@heroicons/react/24/outline';
+import MarkdownWithMath from '@/components/MarkdownWithMath';
+
+type MessageRole = 'user' | 'system' | 'model';
+
+interface ExtendedChatMessage {
+  role: MessageRole;
+  content: string;
+  hasContext?: boolean;
+  createdAt?: string;
+}
+
+interface Conversation {
+  id: string;
+  name: string;
+  messages: ExtendedChatMessage[];
+}
+
+interface SubscriptionStatus {
+  isActive: boolean;
+  isTrial: boolean;
+  trialEndDate?: string;
+  planType: 'trial' | 'paid' | 'none';
+  startDate: string;
+}
+
+// Memoize the message list component
+const MessageList = React.memo(({ 
+  messages, 
+  editingIdx, 
+  editingText,
+  setEditingText,
+  copiedIdx, 
+  handleEdit, 
+  handleEditCancel, 
+  handleEditSave, 
+  handleCopy 
+}: {
+  messages: ChatMessage[];
+  editingIdx: number | null;
+  editingText: string;
+  setEditingText: (text: string) => void;
+  copiedIdx: number | null;
+  handleEdit: (idx: number) => void;
+  handleEditCancel: () => void;
+  handleEditSave: (idx: number) => void;
+  handleCopy: (idx: number, content: string) => void;
+}) => (
+  <div className="max-w-6xl mx-auto w-full flex flex-col gap-4 md:gap-8">
+    {messages.map((message, idx) => (
+      <div key={idx} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+        <div className="relative group max-w-[90%] md:max-w-[80%]">
+          <div className={`rounded-lg p-2.5 md:p-3 ${
+            message.role === 'user'
+              ? 'bg-green-500 text-white'
+              : 'text-white'
+          }`}>
+            {editingIdx === idx ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  value={editingText}
+                  onChange={(e) => setEditingText(e.target.value)}
+                  className="w-full p-2 text-gray-800 rounded border focus:outline-none focus:ring-2 focus:ring-green-500 text-sm md:text-base"
+                  rows={3}
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => handleEditCancel()}
+                    className="px-2 py-1 text-xs md:text-sm text-gray-600 hover:text-gray-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleEditSave(idx)}
+                    className="px-2 py-1 text-xs md:text-sm bg-green-500 text-white rounded hover:bg-green-600"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <MarkdownWithMath content={message.content} role={message.role} />
+                {message.role === 'model' && message.hasContext && (
+                  <div className="mt-1.5 md:mt-2 text-xs md:text-sm text-gray-500 italic">
+                    Information from uploaded documents
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          {/* Action buttons */}
+          <div className={`flex items-center gap-2 md:gap-3 mt-1 justify-${message.role === 'user' ? 'end' : 'start'} opacity-0 group-hover:opacity-100 transition-opacity`}>
+            <button
+              onClick={() => handleCopy(idx, message.content)}
+              className="text-gray-400 hover:text-white transition-colors"
+              title="Copy message"
+            >
+              {copiedIdx === idx ? (
+                <span className="text-xs text-green-400">Copied!</span>
+              ) : (
+                <ClipboardIcon className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              )}
+            </button>
+            {message.role === 'user' && (
+              <button
+                onClick={() => handleEdit(idx)}
+                className="text-gray-400 hover:text-white transition-colors"
+                title="Edit message"
+              >
+                <PencilIcon className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+));
+
+// Memoize the input area component
+const InputArea = React.memo(({ 
+  input, 
+  handleInputChange, 
+  handleSend, 
+  isLoading, 
+  sidebarOpen 
+}: {
+  input: string;
+  handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  handleSend: (e: React.FormEvent) => void;
+  isLoading: boolean;
+  sidebarOpen: boolean;
+}) => (
+  <form
+    onSubmit={handleSend}
+    className={`fixed bottom-0 z-40 transition-all duration-300 ${sidebarOpen ? 'left-0 md:left-72 w-full md:w-[calc(100%-18rem)]' : 'left-0 w-full'} px-3 md:px-24 pb-3 md:pb-8`}
+  >
+    <div className="bg-black rounded-lg flex items-center px-3 md:px-8 py-3 md:py-6 max-w-6xl mx-auto border-2 border-white">
+      <input
+        type="text"
+        placeholder="Ask a question from any course."
+        className="flex-1 bg-transparent outline-none text-sm md:text-base text-white placeholder-gray-400"
+        value={input}
+        onChange={handleInputChange}
+        disabled={isLoading}
+      />
+      <button
+        type="submit"
+        className="ml-3 md:ml-4 bg-white text-black px-2.5 md:px-6 py-1.5 md:py-2 rounded-md font-semibold text-sm md:text-base"
+        disabled={isLoading || !input.trim()}
+      >
+        Send
+      </button>
+    </div>
+  </form>
+));
+
+export default function MainPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const menuRef = useRef(null);
+  const userMenuRef = useRef(null);
+  const [userSubscription, setUserSubscription] = useState<SubscriptionStatus | null>(null);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState("");
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [messages, setMessages] = useState<ExtendedChatMessage[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [renamingIdx, setRenamingIdx] = useState<number | null>(null);
+  const [renameText, setRenameText] = useState("");
+  const [historyMenuIdx, setHistoryMenuIdx] = useState<number | null>(null);
+  const [userLevel, setUserLevel] = useState<string>("");
+
+  // Helper to get active conversation
+  const activeConv = conversations.find(c => c.id === activeId);
+  const messagesInConv = activeConv ? activeConv.messages : [];
+
+  // Edit/copy handlers
+  const handleCopy = async (idx: number, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(null), 1200);
+    } catch (err) {
+      console.error('Failed to copy text:', err);
+    }
+  };
+
+  const handleEdit = (idx: number) => {
+    if (messagesInConv[idx].role === 'user') {
+      setEditingIdx(idx);
+      setEditingText(messagesInConv[idx].content);
+    }
+  };
+
+  const handleEditSave = async (idx: number) => {
+    if (!editingText.trim()) return;
+
+    // Copy and update the edited message
+    const updatedMessages = [...messagesInConv];
+    updatedMessages[idx] = {
+      ...updatedMessages[idx],
+      content: editingText.trim()
+    };
+
+    setEditingIdx(null);
+    setEditingText("");
+
+    // If it's the last message, just update it
+    if (idx === messagesInConv.length - 1) {
+      setConversations(prev => prev.map(c =>
+        c.id === activeId
+          ? { ...c, messages: updatedMessages }
+          : c
+      ));
+      return;
+    }
+
+    // If not the last message, regenerate AI response and truncate
+    setIsLoading(true);
+    try {
+      const messagesToKeep = updatedMessages.slice(0, idx + 1);
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: editingText.trim() }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to get response");
+      }
+
+      const data = await response.json();
+      const aiMessage = {
+        role: 'model' as MessageRole,
+        content: data.response,
+        hasContext: data.hasContext,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Only keep up to the edited message, then add the new AI response
+      const newMessages = [...messagesToKeep, aiMessage];
+
+      setConversations(prev => prev.map(c =>
+        c.id === activeId
+          ? { ...c, messages: newMessages }
+          : c
+      ));
+    } catch (error) {
+      console.error('Error regenerating response:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEditCancel = () => {
+    setEditingIdx(null);
+    setEditingText("");
+  };
+
+  // Close dropdowns on outside click
+  React.useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !(menuRef.current as any).contains(e.target)) setShowMenu(false);
+      if (userMenuRef.current && !(userMenuRef.current as any).contains(e.target)) setShowUserMenu(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // New chat
+  async function handleNewChat() {
+    if (!session?.user?.id) return;
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: undefined, // Let backend create a new one
+          title: "New Conversation",
+          messages: [],
+          userId: session.user.id,
+        }),
+        credentials: "include",
+      });
+      const data = await response.json();
+      if (response.ok && data.conversation) {
+        setConversations(prev => [...prev, {
+          id: data.conversation.id,
+          name: data.conversation.title,
+          messages: [],
+        }]);
+        setActiveId(data.conversation.id);
+    setEditingIdx(null);
+    setEditingText("");
+      }
+    } catch (err) {
+      console.error("Error creating new conversation:", err);
+    }
+  }
+
+  // Load user's conversations on mount and subscription status
+  useEffect(() => {
+    async function loadData() {
+      if (session?.user?.id) {
+        try {
+          // Fetch subscription status
+          const subscriptionResponse = await fetch('/api/subscription/status', {
+            credentials: 'include',
+          });
+          const subscriptionData = await subscriptionResponse.json();
+          setUserSubscription(subscriptionData);
+
+          // First, clean up any empty conversations
+          await fetch('/api/conversations/cleanup', {
+            method: 'POST',
+            credentials: 'include',
+          });
+
+          // Then load the remaining conversations
+          const response = await fetch(`/api/conversations?userId=${session.user.id}&limit=10&messageLimit=50`, {
+            credentials: 'include',
+          });
+          const data = await response.json();
+          if (data.conversations) {
+            const formattedConversations = data.conversations.map((conv: any) => ({
+              id: conv.id,
+              name: conv.title,
+              messages: conv.messages.map((msg: any) => ({
+                role: msg.role as MessageRole,
+                content: msg.content,
+                createdAt: new Date(msg.createdAt)
+              }))
+            }));
+            setConversations(formattedConversations);
+            if (formattedConversations.length > 0) {
+              setActiveId(formattedConversations[0].id);
+              setMessages(formattedConversations[0].messages);
+            }
+          }
+        } catch (err) {
+          console.error("Error loading user data:", err);
+        }
+      }
+    }
+    loadData();
+  }, [session?.user?.id]);
+
+  // Save conversation when messages change - Optimized to reduce API calls
+  useEffect(() => {
+    async function saveConversation() {
+      if (!activeConv || !session?.user?.id || isLoading) return; // Don't save while loading
+      
+      try {
+        // Don't save if there are no messages
+        if (!activeConv.messages || activeConv.messages.length === 0) {
+          return;
+        }
+
+        const response = await fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: activeConv.id,
+            title: activeConv.name,
+            messages: activeConv.messages,
+            userId: session.user.id
+          }),
+          credentials: 'include',
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to save conversation");
+        }
+
+        const savedConversation = await response.json();
+        setConversations(prev => prev.map(c =>
+          c.id === savedConversation.id ? savedConversation : c
+        ));
+      } catch (err) {
+        console.error("Error saving conversation:", err);
+        // Optionally show a user-friendly error message
+        // You could add a toast notification here
+      }
+    }
+
+    // Increased debounce time to reduce API calls
+    const timeoutId = setTimeout(saveConversation, 2000);
+    return () => clearTimeout(timeoutId);
+  }, [activeConv?.messages, session?.user?.id, isLoading]); // More specific dependencies
+
+  // Memoize sorted messages to prevent unnecessary sorting
+  const sortedMessages = useMemo(() => {
+    if (!activeConv) return [];
+    return [...activeConv.messages].sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateA - dateB;
+    });
+  }, [activeConv?.messages]);
+
+  // Update messages when sorted messages change
+  useEffect(() => {
+    setMessages(sortedMessages);
+  }, [sortedMessages]);
+
+  // Memoize the input handler
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value);
+  }, []);
+
+  // Fetch user level on mount or when session changes
+  useEffect(() => {
+    async function fetchLevel() {
+      if (session?.user) {
+        try {
+          const res = await fetch('/api/user');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.user?.level) setUserLevel(data.user.level);
+          }
+        } catch {}
+      }
+    }
+    fetchLevel();
+  }, [session]);
+
+  // Send message - Remove messages from dependencies to prevent recreation
+  const handleSend = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    const userMessage: ExtendedChatMessage = {
+      role: 'user',
+      content: input.trim(),
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((prev: ExtendedChatMessage[]) => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+
+    try {
+      const chatResponse = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          message: userMessage.content,
+          conversationHistory: sortedMessages, // Use sortedMessages instead of messages
+          level: userLevel
+        }),
+      });
+      
+      if (!chatResponse.ok) {
+        throw new Error("Failed to get response");
+      }
+      
+      const data = await chatResponse.json();
+      setMessages((prev: ExtendedChatMessage[]) => [...prev, { 
+        role: 'model', 
+        content: data.response,
+        hasContext: data.hasContext,
+        createdAt: new Date().toISOString(),
+      }]);
+    } catch (error) {
+      console.error('Error in chat:', error);
+      setMessages((prev: ExtendedChatMessage[]) => [...prev, {
+        role: 'model',
+        content: 'I apologize, but I encountered an error. Please try again.',
+        createdAt: new Date().toISOString(),
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [input, isLoading, sortedMessages, userLevel]); // Use sortedMessages instead of messages
+
+  // Chat history actions
+  function handleSelectConv(id: string) {
+    setActiveId(id);
+    setEditingIdx(null);
+    setEditingText("");
+  }
+  async function handleDeleteConv(idx: number) {
+    const convToDelete = conversations[idx];
+    if (!convToDelete || !session?.user?.id) return;
+
+    try {
+      const response = await fetch(`/api/conversations?id=${convToDelete.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        console.error('Failed to delete conversation');
+        return;
+      }
+
+      // Update local state after successful deletion
+    setConversations(prev => prev.filter((_, i) => i !== idx));
+    if (conversations[idx]?.id === activeId) {
+      // If deleting active, switch to another or none
+      setActiveId(conversations.length > 1 ? conversations[(idx === 0 ? 1 : 0)].id : null);
+    }
+    setHistoryMenuIdx(null);
+    } catch (err) {
+      console.error('Error deleting conversation:', err);
+    }
+  }
+  function handleRenameConv(idx: number) {
+    setRenamingIdx(idx);
+    setRenameText(conversations[idx].name);
+    setHistoryMenuIdx(null);
+  }
+  function handleRenameSave(idx: number) {
+    setConversations(prev => prev.map((c, i) => i === idx ? { ...c, name: renameText } : c));
+    setRenamingIdx(null);
+    setRenameText("");
+  }
+  function handleRenameCancel() {
+    setRenamingIdx(null);
+    setRenameText("");
+  }
+
+  // Add this useEffect to auto-create a conversation on mount:
+  React.useEffect(() => {
+    if (conversations.length === 0) {
+      const id = Date.now().toString();
+      setConversations([{ id, name: 'New Conversation', messages: [] }]);
+      setActiveId(id);
+    }
+    // eslint-disable-next-line
+  }, []);
+
+  // Add authentication check
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/login");
+    }
+  }, [status, router]);
+
+  // Handle logout
+  const handleLogout = async () => {
+    await signOut({ redirect: true, callbackUrl: "/" });
+  };
+
+  // Don't render anything while checking authentication
+  if (status === "loading") {
+    return (
+      <div className="flex min-h-screen bg-black text-white items-center justify-center">
+        <div className="text-xl">Loading...</div>
+      </div>
+    );
+  }
+
+  // Don't render if not authenticated
+  if (status === "unauthenticated") {
+    return null;
+  }
+
+  return (
+    <div className="flex min-h-screen bg-black text-white">
+      {/* Sidebar */}
+      {sidebarOpen && (
+        <aside className="w-[85vw] md:w-72 bg-[#181A1B] h-screen fixed left-0 top-0 z-50 md:relative md:z-0 flex flex-col">
+          {/* Logo at the top */}
+          <div className="flex items-center gap-2 mb-4 pt-4 px-4 shrink-0">
+            <div className="w-16 h-16 md:w-32 md:h-32 relative">
+              <Image
+                src="/uploads/Logo 2.png"
+                alt="Logo"
+                fill
+                className="object-contain"
+              />
+            </div>
+          </div>
+          {/* Chat history header with new chat icon */}
+          <div className="flex items-center justify-between px-4 mb-3">
+            <div className="text-base md:text-lg font-semibold">Chat History</div>
+            <button
+              className="p-1 rounded hover:bg-gray-800 text-gray-300"
+              title="New Chat"
+              onClick={handleNewChat}
+            >
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
+          {/* Chat history (scrollable only here) */}
+          <div className="flex-1 flex flex-col px-4 min-h-0">
+            <div className="flex-1 overflow-y-auto pr-2 min-h-0">
+              <ul className="space-y-1">
+                {conversations.map((conv, idx) => (
+                  <li
+                    key={conv.id}
+                    className={`px-2 py-1.5 md:px-3 md:py-2 rounded-md cursor-pointer text-sm flex items-center justify-between ${conv.id === activeId ? "bg-gray-700 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"}`}
+                    onClick={() => handleSelectConv(conv.id)}
+                  >
+                    {renamingIdx === idx ? (
+                      <form
+                        onSubmit={e => { e.preventDefault(); handleRenameSave(idx); }}
+                        className="flex-1 flex gap-2 items-center"
+                      >
+                        <input
+                          className="bg-gray-900 text-white rounded px-2 py-1 text-xs border border-gray-600 flex-1"
+                          value={renameText}
+                          onChange={e => setRenameText(e.target.value)}
+                          autoFocus
+                        />
+                        <button type="submit" className="text-green-400 text-xs font-semibold">Save</button>
+                        <button type="button" className="text-gray-400 text-xs font-semibold" onClick={handleRenameCancel}>Cancel</button>
+                      </form>
+                    ) : (
+                      <>
+                        <span className="truncate flex-1">{conv.name}</span>
+                        {/* Three-dot menu (desktop only) */}
+                        <div className="hidden md:block relative">
+                          <button
+                            className="p-1 ml-2 rounded hover:bg-gray-800 text-gray-300"
+                            onClick={e => { e.stopPropagation(); setHistoryMenuIdx(idx === historyMenuIdx ? null : idx); }}
+                          >
+                            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                              <circle cx="12" cy="5" r="2"/>
+                              <circle cx="12" cy="12" r="2"/>
+                              <circle cx="12" cy="19" r="2"/>
+                            </svg>
+                          </button>
+                          {historyMenuIdx === idx && (
+                            <div className="absolute right-0 mt-2 w-32 bg-[#232625] rounded-lg shadow-lg py-2 z-50">
+                              <button className="block w-full text-left px-4 py-2 hover:bg-gray-700 text-sm" onClick={e => { e.stopPropagation(); handleRenameConv(idx); }}>Rename</button>
+                              <button className="block w-full text-left px-4 py-2 hover:bg-gray-700 text-sm" onClick={e => { e.stopPropagation(); handleDeleteConv(idx); }}>Delete</button>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          {/* Buy credits button at the bottom */}
+          <div className="px-4 mt-4 mb-4 md:mt-10 md:mb-8 shrink-0">
+            <button className="w-full text-left text-gray-400 hover:text-white text-sm md:text-lg font-semibold">Upgrade plan or buy credits</button>
+          </div>
+        </aside>
+      )}
+      {/* Sidebar toggle button */}
+      <button
+        className={`fixed md:static top-4 left-4 md:top-auto md:left-auto z-50 flex items-center justify-center rounded-full transition-all duration-200
+          bg-gray-900 border-2 border-white hover:bg-gray-700
+          md:ml-6 md:mt-4
+        `}
+        style={{ width: 36, height: 36, fontSize: 24 }}
+        onClick={() => setSidebarOpen((open) => !open)}
+        aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+      >
+        {sidebarOpen ? (
+          <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <path d="M18 6L6 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+            <path d="M6 6L18 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+          </svg>
+        ) : (
+          <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+            <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+            <line x1="4" y1="18" x2="20" y2="18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+          </svg>
+        )}
+      </button>
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-h-screen bg-black">
+        {/* Top Bar - Fixed */}
+        <div className="fixed top-0 right-0 left-0 md:left-72 z-40 bg-black flex items-center px-3 md:px-6 py-2 md:py-3 gap-2 md:gap-4">
+          {/* Left: empty for spacing on mobile, hidden on desktop */}
+          <div className="w-8 md:hidden" />
+          {/* Center: Plan status - centered on mobile, right on desktop */}
+          <div className="flex-1 flex justify-center md:justify-end">
+            <button
+              className="flex items-center gap-1.5 bg-black px-2 md:px-3 py-1 md:py-2 rounded-lg font-medium hover:bg-gray-700 transition text-xs"
+              onClick={() => window.location.href = '/plan'}
+            >
+              {userSubscription?.isTrial ? 'Free Trial' : userSubscription?.planType === 'paid' ? 'Premium Plan' : 'No Active Plan'}
+            </button>
+          </div>
+          {/* Right: User profile and menu */}
+          <div className="flex items-center gap-2">
+            <div className="relative" ref={userMenuRef}>
+              <div className="w-6 h-6 md:w-8 md:h-8 relative">
+                <Image
+                  src="/uploads/user-placeholder.png"
+                  alt="User"
+                  fill
+                  className="rounded-full cursor-pointer object-cover"
+                  onClick={() => setShowUserMenu((v) => !v)}
+                />
+              </div>
+              {showUserMenu && (
+                <div className="absolute right-0 mt-2 w-40 md:w-48 bg-[#232625] rounded-lg shadow-lg py-2 z-50">
+                  <button 
+                    className="block w-full text-left px-3 py-1.5 md:px-4 md:py-2 hover:bg-gray-700 text-xs md:text-sm"
+                    onClick={() => router.push('/profile')}
+                  >
+                    View Profile
+                  </button>
+                  <button className="block w-full text-left px-3 py-1.5 md:px-4 md:py-2 hover:bg-gray-700 text-xs md:text-sm">Help & FAQs</button>
+                  <button 
+                    className="block w-full text-left px-3 py-1.5 md:px-4 md:py-2 hover:bg-gray-700 text-xs md:text-sm"
+                    onClick={() => router.push('/feedback')}
+                  >
+                    Feedback
+                  </button>
+                  <button 
+                    className="block w-full text-left px-3 py-1.5 md:px-4 md:py-2 hover:bg-gray-700 text-xs md:text-sm" 
+                    onClick={handleLogout}
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
+            {/* Three-dot vertical menu */}
+            <div className="relative" ref={menuRef}>
+              <button
+                className="text-white p-1.5 rounded-full hover:bg-gray-700"
+                onClick={() => setShowMenu((v) => !v)}
+                aria-label="Open menu"
+              >
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <circle cx="12" cy="5" r="2"/>
+                  <circle cx="12" cy="12" r="2"/>
+                  <circle cx="12" cy="19" r="2"/>
+                </svg>
+              </button>
+              {showMenu && (
+                <div className="absolute right-0 mt-2 w-32 bg-[#232625] rounded-lg shadow-lg py-2 z-50">
+                  <button className="block w-full text-left px-4 py-2 hover:bg-gray-700 text-sm">Delete</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        {/* Chat Area - Adjusted with top padding to account for fixed topbar */}
+        <div className="flex-1 flex flex-col px-3 md:px-8 pt-16 md:pt-20 pb-24 md:pb-40 gap-4 md:gap-8 overflow-y-auto bg-black">
+          {messages.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center">
+              <span className="text-2xl md:text-5xl font-bold text-center text-white">
+                Hello, Great PANSite
+              </span>
+            </div>
+          ) : (
+            <MessageList
+              messages={messages}
+              editingIdx={editingIdx}
+              editingText={editingText}
+              setEditingText={setEditingText}
+              copiedIdx={copiedIdx}
+              handleEdit={handleEdit}
+              handleEditCancel={handleEditCancel}
+              handleEditSave={handleEditSave}
+              handleCopy={handleCopy}
+            />
+          )}
+        </div>
+        {/* Input Area */}
+        {activeConv && (
+          <InputArea
+            input={input}
+            handleInputChange={handleInputChange}
+            handleSend={handleSend}
+            isLoading={isLoading}
+            sidebarOpen={sidebarOpen}
+          />
+        )}
+      </div>
+    </div>
+  );
+} 
