@@ -58,7 +58,7 @@ export async function POST(req: Request) {
       ? `${courseCode} ${courseTitle} ${topic}`
       : `${courseCode} ${courseTitle}`;
 
-    const searchResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/search`, {
+    const searchResponse = await fetch(`${process.env.NEXTAUTH_URL || 'https://pansgpt.vercel.app'}/api/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 

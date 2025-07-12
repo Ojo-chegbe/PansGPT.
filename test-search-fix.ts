@@ -147,7 +147,7 @@ async function testSearch() {
     // Test API endpoint
     console.log('\n6. Testing API endpoint...');
     try {
-      const apiResponse = await fetch("http://localhost:3000/api/search", {
+      const apiResponse = await fetch("https://pansgpt.vercel.app/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
