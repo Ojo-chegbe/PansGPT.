@@ -52,23 +52,44 @@ export async function GET(request: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
+    console.log('Session in POST /api/conversations:', {
+      hasSession: !!session,
+      hasUser: !!session?.user,
+      hasEmail: !!session?.user?.email,
+      userId: session?.user?.id,
+      email: session?.user?.email
+    });
+    
     if (!session?.user?.email) {
-      return new Response('Unauthorized', { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
 
+    console.log('User found in database:', {
+      hasUser: !!user,
+      userId: user?.id,
+      email: user?.email
+    });
+
     if (!user) {
-      return new Response('User not found', { status: 404 });
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     const data = await req.json();
+    console.log('Request data:', {
+      hasId: !!data.id,
+      hasTitle: !!data.title,
+      messageCount: data.messages?.length || 0,
+      userId: data.userId
+    });
     
-    // Don't save if there are no messages
-    if (!data.messages || data.messages.length === 0) {
-      return new Response('No messages to save', { status: 400 });
+    // Allow creating conversations with no messages (for new conversations)
+    // Only require messages when updating existing conversations
+    if (data.id && (!data.messages || data.messages.length === 0)) {
+      return NextResponse.json({ error: "Cannot update conversation with no messages" }, { status: 400 });
     }
 
     // If conversation exists, update it
@@ -80,8 +101,21 @@ export async function POST(req: Request) {
       });
 
       if (!existingConversation || existingConversation.userId !== user.id) {
-        return new Response('Unauthorized', { status: 401 });
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
+
+      console.log('Updating existing conversation with messages:', {
+        conversationId: data.id,
+        title: data.title,
+        userId: user.id,
+        messageCount: data.messages.length,
+        messages: data.messages.map((msg: any) => ({
+          content: msg.content?.substring(0, 50) + '...',
+          role: msg.role,
+          userId: user.id,
+          createdAt: msg.createdAt
+        }))
+      });
 
       const updatedConversation = await prisma.conversation.update({
         where: { id: data.id },
@@ -101,36 +135,71 @@ export async function POST(req: Request) {
           messages: true,
         },
       });
-      return new Response(JSON.stringify(updatedConversation), {
-        headers: { 'Content-Type': 'application/json' },
+
+      console.log('Conversation updated successfully:', {
+        conversationId: updatedConversation.id,
+        title: updatedConversation.title,
+        messageCount: updatedConversation.messages.length,
+        messages: updatedConversation.messages.map(msg => ({
+          id: msg.id,
+          content: msg.content?.substring(0, 50) + '...',
+          role: msg.role,
+          conversationId: msg.conversationId,
+          userId: msg.userId
+        }))
       });
+
+      return NextResponse.json(updatedConversation);
     }
 
     // Create new conversation
+    console.log('Creating new conversation with messages:', {
+      title: data.title,
+      userId: user.id,
+      messageCount: data.messages?.length || 0,
+      messages: data.messages?.map((msg: any) => ({
+        content: msg.content?.substring(0, 50) + '...',
+        role: msg.role,
+        userId: user.id,
+        createdAt: msg.createdAt
+      })) || []
+    });
+
     const newConversation = await prisma.conversation.create({
       data: {
         title: data.title,
         userId: user.id,
-        messages: {
+        messages: data.messages ? {
           create: data.messages.map((msg: any) => ({
             content: msg.content,
             role: msg.role,
             userId: user.id,
             createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined
           })),
-        },
+        } : undefined,
       },
       include: {
         messages: true,
       },
     });
 
-    return new Response(JSON.stringify(newConversation), {
-      headers: { 'Content-Type': 'application/json' },
+    console.log('New conversation created successfully:', {
+      conversationId: newConversation.id,
+      title: newConversation.title,
+      messageCount: newConversation.messages.length,
+      messages: newConversation.messages.map(msg => ({
+        id: msg.id,
+        content: msg.content?.substring(0, 50) + '...',
+        role: msg.role,
+        conversationId: msg.conversationId,
+        userId: msg.userId
+      }))
     });
+
+    return NextResponse.json(newConversation);
   } catch (error) {
     console.error('Error saving conversation:', error);
-    return new Response('Internal Server Error', { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 

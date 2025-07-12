@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
-import { Document } from 'langchain/document';
 import { getClient, closeClient } from '@/lib/db';
 import { DataAPIClient } from '@datastax/astra-db-ts';
 
@@ -12,6 +11,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
+
+const EMBEDDING_SERVICE_URL = process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || "https://pansgpt.onrender.com";
 
 // Utility function to sanitize filenames
 function sanitizeFilename(filename: string): string {
@@ -129,12 +130,13 @@ export async function POST(request: Request) {
         const chunkId = `${documentId}_chunk_${index}`;
         const chunkMetadata = {
           ...metadata,
+          author: metadata.professorName,
           chunkIndex: index,
           totalChunks: chunks.length
         };
 
         // Generate embedding for the chunk
-        const embedResponse = await fetch("http://localhost:8000/embed", {
+        const embedResponse = await fetch(`${EMBEDDING_SERVICE_URL}/embed`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ texts: [chunk.pageContent] }),

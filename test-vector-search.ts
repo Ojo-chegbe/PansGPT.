@@ -1,10 +1,14 @@
 import { getClient } from './src/lib/db';
 
+interface EmbeddingResponse {
+  embeddings: number[][];
+}
+
 async function main() {
   try {
     // First, get a sample embedding
     console.log('Getting embedding for query...');
-    const embedResponse = await fetch("http://localhost:8000/embed", {
+    const embedResponse = await fetch("https://pansgpt.onrender.com/embed", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texts: ["What is normality in chemistry and how is it used in solutions?"] }),
@@ -14,7 +18,7 @@ async function main() {
       throw new Error("Failed to generate query embedding");
     }
 
-    const embedData = await embedResponse.json();
+    const embedData = await embedResponse.json() as EmbeddingResponse;
     const queryEmbedding = embedData.embeddings[0];
     console.log('Got embedding:', {
       size: queryEmbedding.length,
@@ -46,7 +50,7 @@ async function main() {
       {},
       {
         sort: {
-          embedding: queryEmbedding
+          $vector: queryEmbedding
         },
         includeSimilarity: true
       }

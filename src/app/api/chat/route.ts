@@ -79,7 +79,7 @@ export async function POST(req: Request) {
 
         // Build enhanced context with source information and metadata
         const contextParts: string[] = [];
-        sourceGroups.forEach(({ chunks, relevance }, source) => {
+        sourceGroups.forEach(({ chunks }, source) => {
           // Group chunks by section if available
           const sectionGroups = new Map<string, DocumentChunk[]>();
           chunks.forEach(chunk => {
@@ -146,57 +146,41 @@ export async function POST(req: Request) {
       return filters;
     }
 
+    // Limit context length to prevent token overflow
+    const maxContextLength = 2000; // characters
+    if (context.length > maxContextLength) {
+      context = context.substring(0, maxContextLength) + "...\n\n[Context truncated for length]";
+    }
+
     // Update the system message to be more specific about source handling and response style
     const systemMessage = `You are an advanced academic assistant with access to a curated database of course materials and documents. ${
       hasRelevantContent 
         ? `\n\nI found relevant information in the database for this query across ${sources.length} sources, covering ${Array.from(topicAreas).join(", ") || "various"} topics from ${Array.from(documentTypes).join(", ") || "various"} document types.\n\n${context}\n\n` +
-          `IMPORTANT INSTRUCTIONS FOR RESPONSE GENERATION:\n` +
-          `1. ALWAYS provide comprehensive explanations that combine document information with broader academic context.\n` +
-          `2. Break down complex concepts into clear, simple terms while maintaining accuracy.\n` +
-          `3. Use clear paragraph structure with topic sentences and supporting details.\n` +
-          `4. When citing sources, use this format: "According to [Document Title/Source]..." and explain how it connects to the broader topic.\n` +
-          `5. If the document information is incomplete, supplement with relevant academic knowledge while clearly indicating what comes from where.\n` +
-          `6. Use examples and analogies to illustrate complex concepts when appropriate.\n` +
-          `7. Address both the "what" and the "why" - explain not just what something is, but why it matters and how it's used.\n` +
-          `8. If there are related concepts not mentioned in the documents but important for understanding, briefly explain those too.\n` +
-          `9. Maintain an academic yet accessible tone - formal but not overly technical.\n` +
-          `10. End with a brief summary that ties everything together.\n` +
-          `11. For mathematical equations and chemical formulas:\n` +
-          `    - Use LaTeX notation between $$ for display (block) equations (e.g., $$...$$)\n` +
-          `    - Use LaTeX notation between \\( ... \\) for inline equations (e.g., \\( ... \\))\n` +
-          `    - Do NOT use single $ for inline math.\n` +
-          `    - Format subscripts using LaTeX notation (e.g., N_{acid} instead of N<sub>acid</sub>)\n` +
-          `    - Include proper spacing in equations using LaTeX spacing commands\n` +
-          `    - Define all variables after equations using a "Where:" section\n` +
-          `    - Format chemical equations using proper LaTeX notation\n` +
-          `12. When formatting "Where:" sections:\n` +
-          `    - List each variable on a new line\n` +
-          `    - Use consistent formatting for all variables\n` +
-          `    - Include units where applicable\n` +
-          `    - Use LaTeX notation for any mathematical symbols in the definitions\n` +
-          `13. For the specific equation N_{acid} \times V_{acid} = N_{base} \times V_{base}:\n` +
-          `    - Format it as: $$N_{acid} \\times V_{acid} = N_{base} \\times V_{base}$$\n` +
-          `    - In the "Where:" section, format each variable as: \\(N_{acid}\\) = Normality of the acid\n`
-        : `\n\nI don't have any relevant documents in the database for this query. I can:\n` +
-          `1. Answer based on my general academic knowledge\n` +
-          `2. Suggest uploading relevant documents through the upload form\n` +
-          `3. Help rephrase the query to better match available documents\n\n` +
-          `Would you like to try any of these options?`
+          `IMPORTANT: Provide comprehensive explanations that combine document information with broader academic context. Use clear paragraph structure, cite sources as "According to [Source]...", and end with a brief summary. For math, use LaTeX notation ($$...$$ for display, \\(...\\) for inline).`
+        : `\n\nI don't have any relevant documents in the database for this query. I can answer based on my general academic knowledge, suggest uploading relevant documents, or help rephrase the query.`
     }`;
 
     // Use Google Gemma model for chat response with optimized parameters
     const messagesForAI: ChatMessage[] = [
       { role: "system", content: systemMessage },
-      ...conversationHistory.map((msg: any) => ({ role: msg.role, content: msg.content })),
+      ...conversationHistory.slice(-6).map((msg: any) => ({ role: msg.role, content: msg.content })), // Limit history to last 6 messages
       { role: "user", content: message }
     ];
     
     const aiResponse = await generateChatResponse(GOOGLE_API_KEY, messagesForAI, {
-      maxOutputTokens: 1024,  // Increased for more comprehensive responses
+      maxOutputTokens: 4096,  // Increased significantly for complete responses
       temperature: 0.3,      // Reduced for more focused responses
       topK: 40,
       topP: 0.95,
     });
+
+    // Log response length for debugging
+    console.log('AI Response length:', aiResponse.length, 'characters');
+    
+    // Check if response seems incomplete (ends abruptly)
+    if (aiResponse.length < 50 || aiResponse.trim().endsWith('...') || aiResponse.trim().endsWith('..')) {
+      console.warn('Response appears incomplete:', aiResponse.substring(aiResponse.length - 100));
+    }
 
     return NextResponse.json({
       response: aiResponse,

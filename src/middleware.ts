@@ -1,35 +1,45 @@
 import { NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { NextRequestWithAuth } from 'next-auth/middleware';
+// Removed: import { prisma } from '@/lib/prisma';
 
-// Define paths that require authentication (and potentially subscription)
-const protectedPaths = [
-  '/main',
-  '/practice',
-  '/study-materials',
-  // Add other routes here that directly require a user to be logged in
-];
+// Paths that are always public
+const publicPaths = ['/', '/login', '/signup', '/forgot-password', '/reset-password'];
 
 export default async function middleware(request: NextRequestWithAuth) {
   const token = await getToken({ req: request });
   const path = request.nextUrl.pathname;
 
-  // If user is authenticated AND trying to access the login page, redirect to main
-  // The root path '/' is handled by src/app/page.tsx which redirects to /main if authenticated.
-  if (token && path === '/login') {
-    return NextResponse.redirect(new URL('/main', request.url));
+  // Safety check: Don't run middleware on API routes
+  if (path.startsWith('/api/')) {
+    return NextResponse.next();
   }
 
-  // If user is NOT authenticated AND trying to access a protected path, redirect to login
-  const isProtectedPath = protectedPaths.some(p => path.startsWith(p));
-  if (!token && isProtectedPath) {
+  // Validate token if it exists (no DB call, just check for error)
+  let isValidToken = false;
+  if (token) {
+    isValidToken = !token.error;
+  }
+
+  // Allow public pages for everyone
+  if (publicPaths.includes(path)) {
+    // If user is authenticated and tries to access login or signup, redirect to main
+    if (token && isValidToken && (path === '/login' || path === '/signup')) {
+    return NextResponse.redirect(new URL('/main', request.url));
+    }
+    return NextResponse.next();
+  }
+
+  // If not authenticated or token is invalid, redirect to login for all other pages
+  if (!token || !isValidToken) {
     const url = new URL('/login', request.url);
     url.searchParams.set('callbackUrl', path);
     return NextResponse.redirect(url);
   }
 
-  // If authenticated, check subscription status for premium paths
-  if (token && isProtectedPath) { // Only check subscription if it's a protected path and user is authenticated
+  // Only check subscription for authenticated users on protected pages
+  // Skip subscription check for plan page to avoid redirect loops
+  if (path !== '/plan') {
     try {
       const response = await fetch(`${request.nextUrl.origin}/api/subscription/status`, {
         headers: {
@@ -37,18 +47,22 @@ export default async function middleware(request: NextRequestWithAuth) {
         },
       });
 
+      if (response.ok) {
       const data = await response.json();
 
-      // If no active subscription and not a trial, redirect to plan page
-      if (!data.isActive && !data.isTrial) {
+        // If no active subscription and not a trial, or trial expired, redirect to plan
+        if ((!data.isActive && !data.isTrial) || (data.isTrial && new Date(data.trialEndDate) < new Date())) {
         return NextResponse.redirect(new URL('/plan', request.url));
       }
-
-      // If trial is expired, redirect to plan page
-      if (data.isTrial && new Date(data.trialEndDate) < new Date()) {
-        return NextResponse.redirect(new URL('/plan', request.url));
+      } else {
+        // If subscription check fails, allow the request through
+        // This prevents blocking users when the API is down
+        console.error('Subscription check failed:', response.status);
+        return NextResponse.next();
       }
     } catch (error) {
+      // If subscription check throws an error, allow the request through
+      // This prevents blocking users when there are network issues
       console.error('Error checking subscription:', error);
       return NextResponse.next();
     }
@@ -58,11 +72,8 @@ export default async function middleware(request: NextRequestWithAuth) {
 }
 
 export const config = {
-  // Match ONLY the paths that require middleware logic (auth or subscription check)
+  // Match all pages except static assets and API routes
   matcher: [
-    '/main/:path*',
-    '/practice/:path*',
-    '/study-materials/:path*',
-    '/login', // Keep login here to redirect *authenticated* users away from it.
+    '/((?!api|_next/static|_next/image|favicon.ico|logo|uploads).*)',
   ],
 }; 

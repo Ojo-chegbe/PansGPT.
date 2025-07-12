@@ -1,15 +1,12 @@
-import { DataAPIClient as AstraDB } from "@datastax/astra-db-ts";
+import { getClient } from './src/lib/db';
 
-const ASTRA_DB_APPLICATION_TOKEN = process.env.ASTRA_DB_APPLICATION_TOKEN!;
-const ASTRA_DB_ENDPOINT = process.env.ASTRA_DB_ENDPOINT!;
 const ASTRA_DB_COLLECTION = process.env.ASTRA_DB_COLLECTION || 'document_chunks';
 
 async function checkDB() {
   try {
     console.log('Connecting to AstraDB...');
-    const astraClient = new AstraDB(ASTRA_DB_APPLICATION_TOKEN);
-    const db = astraClient.db(ASTRA_DB_ENDPOINT);
-    const collection = db.collection(ASTRA_DB_COLLECTION);
+    const client = await getClient();
+    const collection = client.collection(ASTRA_DB_COLLECTION);
 
     // Get all documents to count them
     const documents = await collection.find({}).toArray();

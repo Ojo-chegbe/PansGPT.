@@ -22,6 +22,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Fetch user profile fields
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        bio: true,
+        level: true,
+        image: true,
+        achievements: true,
+      },
+    });
+
     // Get user's document access stats
     const documentAccess = await prisma.documentAccess.findMany({
       where: {
@@ -55,6 +69,7 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json({
+      user,
       stats: {
         totalDocumentsViewed,
         uniqueDocumentsViewed,

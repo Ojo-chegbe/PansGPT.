@@ -1,37 +1,35 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id            String         @id @default(cuid())
-  email         String         @unique
-  name          String?
-  image         String?
-  password      String?        // Added for credentials authentication
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  bio           String?        // User bio
-  level         String?        // Academic level/year
-  achievements  Json?          // Achievements and badges
-  emailVerified DateTime?
-  conversations Conversation[]
-  messages      Message[]
-  accounts      Account[]      // Added for relation
-  sessions      Session[]      // Added for relation
-  subscription  Subscription?
-  documentAccess  DocumentAccess[]
+  id                   String               @id @default(cuid())
+  name                 String?
+  email                String               @unique
+  image                String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  password             String?
+  emailVerified        DateTime?
+  achievements         Json?
+  bio                  String?
+  level                String?
+  accounts             Account[]
+  conversations        Conversation[]
+  documentAccess       DocumentAccess[]
+  messages             Message[]
+  quizzes              Quiz[]
+  quizResults          QuizResult[]
+  sessions             Session[]
+  subscription         Subscription?
+  userDevices          UserDevice[]
+  passwordResetTokens  PasswordResetToken[]
 }
 
 model Conversation {
@@ -50,11 +48,11 @@ model Conversation {
 model Message {
   id             String       @id @default(cuid())
   content        String
-  role           String       // 'user' or 'assistant'
+  role           String
   createdAt      DateTime     @default(now())
   conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   userId         String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
@@ -68,27 +66,26 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String?  @db.Text
-  access_token      String?  @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String?  @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
 
 model Session {
-  id            String   @id @default(cuid())
-  sessionToken  String   @unique
-  userId        String
-  expires       DateTime
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  sessionToken   String   @unique
+  userId         String
+  expires        DateTime
   clientDeviceId String?  @map("client_device_id")
-  userAgent     String?
+  userAgent      String?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VerificationToken {
@@ -100,45 +97,128 @@ model VerificationToken {
 }
 
 model Subscription {
-  id               String   @id @default(cuid())
-  userId           String   @unique
-  user             User     @relation(fields: [userId], references: [id])
-  isActive         Boolean  @default(false)
-  isTrial          Boolean  @default(false)
-  planType         String   @default("none") // "trial", "paid", "none"
-  startDate        DateTime @default(now())
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  startDate        DateTime  @default(now())
   endDate          DateTime?
+  isActive         Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  isTrial          Boolean   @default(false)
   paymentReference String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  planType         String    @default("none")
+  user             User      @relation(fields: [userId], references: [id])
 }
 
 model DocumentAccess {
-  id        String   @id @default(cuid())
-  userId    String
+  id         String   @id @default(cuid())
+  userId     String
   documentId String
   accessedAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
-  document  Document @relation(fields: [documentId], references: [id])
+  document   Document @relation(fields: [documentId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([documentId])
 }
 
 model Document {
-  id              String           @id @default(cuid())
-  accessLogs      DocumentAccess[]
+  id         String           @id @default(cuid())
+  accessLogs DocumentAccess[]
 }
 
 model Timetable {
   id          String   @id @default(cuid())
-  level       String   // e.g., "100", "200", "300", etc.
-  day         String   // e.g., "Monday", "Tuesday", etc.
-  timeSlot    String   // e.g., "8:00 AM - 9:00 AM"
-  courseCode  String   // e.g., "CHM 101"
-  courseTitle String   // e.g., "Introduction to Chemistry"
+  level       String
+  day         String
+  timeSlot    String
+  courseCode  String
+  courseTitle String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@unique([level, day, timeSlot])
+}
+
+model Quiz {
+  id           String         @id @default(cuid())
+  title        String
+  courseCode   String
+  courseTitle  String
+  topic        String?
+  level        String
+  difficulty   String         @default("medium")
+  numQuestions Int
+  timeLimit    Int?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions    QuizQuestion[]
+  results      QuizResult[]
+
+  @@index([userId])
+  @@index([courseCode])
+  @@index([level])
+  @@index([createdAt])
+}
+
+model QuizQuestion {
+  id            String   @id @default(cuid())
+  quizId        String
+  questionText  String
+  questionType  String
+  options       Json?
+  correctAnswer String
+  explanation   String?
+  points        Int      @default(1)
+  order         Int
+  createdAt     DateTime @default(now())
+  quiz          Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([quizId])
+  @@index([order])
+}
+
+model QuizResult {
+  id          String   @id @default(cuid())
+  quizId      String
+  userId      String
+  answers     Json
+  score       Float
+  maxScore    Float
+  percentage  Float
+  timeTaken   Int?
+  feedback    Json?
+  completedAt DateTime @default(now())
+  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([quizId])
+  @@index([userId])
+  @@index([completedAt])
+}
+
+model UserDevice {
+  id        String   @id @default(cuid())
+  userId    String
+  deviceId  String
+  firstUsed DateTime @default(now())
+  lastUsed  DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expires   DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
 }

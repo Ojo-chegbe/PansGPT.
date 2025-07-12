@@ -3,7 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import QuizSummaryCards from '@/components/QuizSummaryCards';
+import DeviceManagement from '@/components/DeviceManagement';
+import { clearDeviceId } from '@/lib/device-id';
 
 interface TimetableEntry {
   id: string;
@@ -15,33 +19,47 @@ interface TimetableEntry {
 }
 
 export default function ProfilePage() {
+  const { data: session } = useSession();
+  const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState({ name: '', bio: '', level: '', image: '' });
   const [profilePic, setProfilePic] = useState('');
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   
   // Timetable state
   const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
   const [selectedDay, setSelectedDay] = useState('Monday');
   const [timetableLoading, setTimetableLoading] = useState(false);
 
+  const [quizAnalytics, setQuizAnalytics] = useState<any>(null);
+
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+  // Achievement icon mapping
+  const achievementIcons: Record<string, string> = {
+    "First Document": "📄",
+    "Document Explorer": "🧭",
+    "Document Master": "🏆",
+    "Diverse Reader": "🌐",
+    "Knowledge Seeker": "🔎"
+  };
 
   useEffect(() => {
     async function fetchProfile() {
       const res = await fetch('/api/user');
       if (res.ok) {
         const data = await res.json();
-        setUser(data);
+        setUser(data.user || data); // Always use data.user for profile fields
         setForm({
-          name: data.name || '',
-          bio: data.bio || '',
-          level: data.level || '',
-          image: data.image || '',
+          name: (data.user || data).name || '',
+          bio: (data.user || data).bio || '',
+          level: (data.user || data).level || '',
+          image: (data.user || data).image || '',
         });
-        setProfilePic(data.image || '/uploads/user-placeholder.png');
+        setProfilePic((data.user || data).image || '/uploads/user-placeholder.png');
       }
     }
     fetchProfile();
@@ -53,6 +71,21 @@ export default function ProfilePage() {
       fetchTimetable();
     }
   }, [user?.level]);
+
+  useEffect(() => {
+    async function fetchQuizAnalytics() {
+      try {
+        const res = await fetch('/api/quiz/history?page=1&limit=1');
+        if (res.ok) {
+          const data = await res.json();
+          setQuizAnalytics(data.data.analytics);
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+    fetchQuizAnalytics();
+  }, []);
 
   const fetchTimetable = async () => {
     if (!user?.level) return;
@@ -118,127 +151,52 @@ export default function ProfilePage() {
     setSaving(false);
   };
 
+  const handleLogout = async () => {
+    if (!window.confirm('Are you sure you want to log out?')) {
+      return;
+    }
+
+    setLoggingOut(true);
+    try {
+      // Clear device ID from localStorage
+      clearDeviceId();
+      
+      // Sign out using NextAuth
+      await signOut({ 
+        redirect: true, 
+        callbackUrl: '/' 
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+      setLoggingOut(false);
+    }
+  };
+
   if (!user) {
     return <div className="min-h-screen flex items-center justify-center text-white">Loading...</div>;
   }
 
+  // Use user object for all profile fields, and data.stats/achievements for stats
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-gray-800 text-white flex flex-col items-center py-10 px-4">
       <div className="w-full max-w-3xl bg-[#181A1B] rounded-2xl shadow-xl p-8 flex flex-col gap-8">
-        {/* Personal Info */}
-        <div className="flex flex-col md:flex-row items-center gap-6 md:gap-10 border-b border-gray-700 pb-8">
-          <div className="relative w-32 h-32">
-            <Image
-              src={profilePic}
-              alt="Profile Picture"
-              fill
-              className="rounded-full object-cover border-4 border-yellow-400 shadow-lg"
-            />
-            {editMode && (
-              <label className="absolute bottom-2 right-2 bg-black bg-opacity-70 rounded-full p-2 cursor-pointer hover:bg-opacity-90 transition">
-                <input type="file" accept="image/*" className="hidden" onChange={handlePicChange} />
-                <span role="img" aria-label="Upload">📷</span>
-              </label>
-            )}
-            {uploading && <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-60 rounded-full">Uploading...</div>}
-          </div>
-          <div className="flex-1 flex flex-col gap-2 items-center md:items-start">
-            {editMode ? (
-              <>
-                <input
-                  name="name"
-                  value={form.name}
-                  onChange={handleChange}
-                  className="text-2xl font-bold tracking-tight bg-gray-800 rounded px-2 py-1 text-white w-full"
-                  placeholder="Enter your name"
-                />
-                <select
-                  name="level"
-                  value={form.level}
-                  onChange={handleChange}
-                  className="text-gray-400 text-sm bg-gray-800 rounded px-2 py-1 text-white w-full"
-                  required
-                >
-                  <option value="">Select level</option>
-                  <option value="100">100 level</option>
-                  <option value="200">200 level</option>
-                  <option value="300">300 level</option>
-                  <option value="400">400 level</option>
-                  <option value="500">500 level</option>
-                  <option value="600">600 level</option>
-                </select>
-                <textarea name="bio" value={form.bio} onChange={handleChange} className="italic text-yellow-300 text-center md:text-left bg-gray-800 rounded px-2 py-1 text-white w-full" placeholder="Bio" />
-              </>
-            ) : (
-              <>
-                <div className="flex flex-col items-center md:items-start mb-2">
-                  <div className="text-2xl font-bold tracking-tight">{user.name}</div>
-                  <div className="text-gray-400 text-sm mt-1">Level: <span className="font-semibold text-white">{user.level}</span></div>
-                </div>
-                <div className="text-gray-400 text-sm">{user.email}</div>
-                <div className="italic text-yellow-300 text-center md:text-left">{user.bio}</div>
-              </>
-            )}
-            {editMode ? (
-              <div className="flex gap-2 mt-2">
-                <button className="px-4 py-1.5 bg-yellow-400 text-black rounded-lg font-semibold hover:bg-yellow-300 transition" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
-                <button className="px-4 py-1.5 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-600 transition" onClick={handleCancel}>Cancel</button>
+        {/* Personal Info - Modern Revamp */}
+        <div className="flex flex-col items-center gap-6 border-b border-gray-700 pb-10">
+          <div className="w-full max-w-lg mx-auto bg-gradient-to-br from-gray-900/80 via-gray-800/70 to-gray-900/80 rounded-3xl shadow-2xl p-8 flex flex-col items-center backdrop-blur-md border border-gray-700">
+            <div className="text-3xl md:text-4xl font-extrabold tracking-tight text-white text-center mb-2 drop-shadow-lg">{user.name}</div>
+            <span className="inline-block px-4 py-1 rounded-full bg-green-500/20 text-green-400 font-bold text-base mb-2 shadow">Level {user.level}</span>
+            <div className="text-base text-gray-400 text-center mb-4 select-all">{user.email}</div>
+            {user.bio && (
+              <div className="w-full bg-white/5 border border-green-400/20 rounded-xl px-5 py-3 text-green-200 text-center italic mb-4 shadow-inner backdrop-blur-sm">
+                {user.bio}
               </div>
-            ) : (
-              <button className="mt-2 px-4 py-1.5 bg-yellow-400 text-black rounded-lg font-semibold hover:bg-yellow-300 transition" onClick={handleEdit}>Edit Profile</button>
             )}
+            <button className="mt-2 px-8 py-2 bg-gradient-to-r from-green-400 to-green-600 text-black rounded-2xl font-bold text-lg shadow-lg hover:from-green-300 hover:to-green-500 hover:scale-105 transition-all duration-200" onClick={handleEdit}>Edit Profile</button>
           </div>
         </div>
 
-        {/* Academic Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center border-b border-gray-700 pb-8">
-          <div>
-            <div className="text-3xl font-bold text-green-400">{user.stats?.questions ?? 0}</div>
-            <div className="text-xs text-gray-400 mt-1">Questions Asked</div>
-          </div>
-          <div>
-            <div className="text-3xl font-bold text-blue-400">{user.stats?.responses ?? 0}</div>
-            <div className="text-xs text-gray-400 mt-1">AI Responses Read</div>
-          </div>
-          <div>
-            <div className="text-3xl font-bold text-purple-400">{user.stats?.docs ?? 0}</div>
-            <div className="text-xs text-gray-400 mt-1">Docs Accessed</div>
-          </div>
-          <div>
-            <div className="text-3xl font-bold text-pink-400">{user.stats?.streak ?? 0}d</div>
-            <div className="text-xs text-gray-400 mt-1">Streak</div>
-          </div>
-          <div className="col-span-2 md:col-span-4 mt-2">
-            <div className="text-xs text-gray-400">Most Studied Topics:</div>
-            <div className="flex flex-wrap gap-2 justify-center mt-1">
-              {(user.stats?.topics || []).map((topic: string) => (
-                <span key={topic} className="bg-gray-700 px-3 py-1 rounded-full text-xs text-white font-medium">{topic}</span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Membership Status */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-b border-gray-700 pb-8">
-          <div className="flex flex-col gap-1 items-center md:items-start">
-            <div className="text-lg font-bold flex items-center gap-2">
-              {user.membership?.tier === 'Gold' && <span className="text-yellow-400">🟡</span>}
-              {user.membership?.tier === 'Plus' && <span className="text-blue-400">🔵</span>}
-              {user.membership?.tier === 'Basic' && <span className="text-green-400">🟢</span>}
-              {user.membership?.tier} Member
-            </div>
-            <div className="text-xs text-gray-400">Member since {user.membership?.since ? new Date(user.membership.since).toLocaleDateString() : ''}</div>
-            <div className="text-xs text-gray-400">{user.membership?.expiry ? `${Math.ceil((new Date(user.membership.expiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} days left` : ''}</div>
-          </div>
-          <div className="flex flex-col gap-2 items-center md:items-end">
-            {user.membership?.tier !== 'Gold' && (
-              <Link href="/plan">
-                <button className="px-4 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-black rounded-lg font-semibold hover:from-yellow-300 hover:to-yellow-400 transition">Upgrade</button>
-              </Link>
-            )}
-            <div className="text-xs text-gray-400 mt-1">Membership: <span className="font-semibold text-white">{user.membership?.tier}</span></div>
-          </div>
-        </div>
+        {/* Quiz Summary Cards */}
+        {quizAnalytics && <QuizSummaryCards analytics={quizAnalytics} />}
 
         {/* Class Timetable */}
         <div className="border-b border-gray-700 pb-8">
@@ -293,20 +251,38 @@ export default function ProfilePage() {
         <div className="flex flex-col gap-2 items-center">
           <div className="text-lg font-bold mb-2">Achievements</div>
           <div className="flex flex-wrap gap-4 justify-center">
-            {(user.achievements || []).map((badge: any) => (
-              <div key={badge.label} className="flex flex-col items-center bg-gray-800 px-4 py-3 rounded-xl shadow border border-gray-700">
-                <span className="text-3xl mb-1">{badge.icon}</span>
-                <span className="text-xs text-gray-300 font-semibold">{badge.label}</span>
+            {(user.achievements && user.achievements.length > 0) ? (
+              user.achievements.map((ach: string) => (
+                <div key={ach} className="flex flex-col items-center bg-gray-800 px-4 py-3 rounded-xl shadow border border-gray-700">
+                  <span className="text-3xl mb-1">{achievementIcons[ach] || "🎖️"}</span>
+                  <span className="text-xs text-gray-300 font-semibold">{ach}</span>
               </div>
-            ))}
+              ))
+            ) : (
+              <div className="text-gray-400 text-sm italic py-4">No achievements yet. Keep using the app to unlock them!</div>
+            )}
           </div>
         </div>
 
+        {/* Device Management */}
+        <div className="border-b border-gray-700 pb-8">
+          <DeviceManagement />
+        </div>
+
         {/* Plan Page Button */}
-        <div className="flex justify-center mt-6">
+        <div className="flex justify-center gap-4 mt-6">
           <Link href="/plan">
-            <button className="px-6 py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition">Go to Plan Page</button>
+            <button className="px-6 py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition">
+              Go to Plan Page
+            </button>
           </Link>
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="px-6 py-2 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loggingOut ? 'Logging out...' : 'Logout'}
+          </button>
         </div>
       </div>
     </div>

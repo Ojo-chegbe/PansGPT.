@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { DataAPIClient as AstraDB } from "@datastax/astra-db-ts";
+import { getClient } from "@/lib/db";
 import { generateEmbeddings } from "@/lib/embedding-service";
 
 // --- CONFIG ---
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
-const ASTRA_DB_APPLICATION_TOKEN = process.env.ASTRA_DB_APPLICATION_TOKEN!;
-const ASTRA_DB_ENDPOINT = process.env.ASTRA_DB_ENDPOINT!;
 const ASTRA_DB_COLLECTION = process.env.ASTRA_DB_COLLECTION!;
 
 export async function POST(request: Request) {
@@ -101,9 +99,8 @@ export async function POST(request: Request) {
 
     // Store in Astra DB
     try {
-      const astraClient = new AstraDB(ASTRA_DB_APPLICATION_TOKEN);
-      const db = astraClient.db(ASTRA_DB_ENDPOINT);
-      const chunksCollection = db.collection(ASTRA_DB_COLLECTION);
+      const client = await getClient();
+      const chunksCollection = client.collection(ASTRA_DB_COLLECTION);
 
       // First, delete any existing chunks for this document
       try {
@@ -121,6 +118,7 @@ export async function POST(request: Request) {
         created_at: new Date().toISOString(),
         metadata: {
           ...metadata,
+          author: metadata.professorName,
           source: `${metadata.professorName}'s notes`,
           fullSource: `${metadata.professorName}'s notes on ${metadata.topic} (${metadata.course})`,
           level: metadata.level || ''

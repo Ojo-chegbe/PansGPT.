@@ -13,6 +13,7 @@ export default function WelcomePage() {
     if (status === "authenticated") {
       router.push("/main");
     }
+    // Do not redirect if unauthenticated
   }, [status, router]);
 
   if (status === "loading") {

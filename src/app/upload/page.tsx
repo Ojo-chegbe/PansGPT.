@@ -105,7 +105,7 @@ function ManageDocuments() {
                   {doc.file_name}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">
-                  Uploaded: {new Date(doc.uploadedAt).toLocaleString()}
+                  Uploaded: {new Date(doc.uploadedAt).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
               <button

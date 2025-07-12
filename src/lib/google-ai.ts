@@ -70,7 +70,7 @@ export async function generateChatResponse(
       temperature: 0.7,
       topK: 40,
       topP: 0.95,
-      maxOutputTokens: 1024,
+      maxOutputTokens: 4096, // Increased for complete responses
       ...config,
     },
   });
@@ -78,5 +78,12 @@ export async function generateChatResponse(
   // Send the last message to get response
   const result = await chat.sendMessage(userMessages[userMessages.length - 1].content);
   const response = await result.response;
-  return response.text();
+  const responseText = response.text();
+  
+  // Validate response completeness
+  if (!responseText || responseText.trim().length === 0) {
+    throw new Error('AI returned empty response');
+  }
+  
+  return responseText;
 } 

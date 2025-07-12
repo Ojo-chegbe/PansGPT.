@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataAPIClient as AstraDB } from "@datastax/astra-db-ts";
-
-const ASTRA_DB_APPLICATION_TOKEN = process.env.ASTRA_DB_APPLICATION_TOKEN!;
-const ASTRA_DB_ENDPOINT = process.env.ASTRA_DB_ENDPOINT!;
-
-const astraClient = new AstraDB(ASTRA_DB_APPLICATION_TOKEN);
-const db = astraClient.db(ASTRA_DB_ENDPOINT);
+import { getClient } from "@/lib/db";
 
 export async function GET() {
   try {
+    const client = await getClient();
+    
     // Get or create documents collection
-    const documentsCollection = await db.createCollection('documents');
+    const documentsCollection = client.collection('documents');
     
     // Only fetch from the documents collection, not the chunks
     const docs = await documentsCollection.find({}).toArray();
@@ -41,9 +37,11 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Missing document_id" }, { status: 400 });
     }
 
+    const client = await getClient();
+
     // Get collections
-    const documentsCollection = await db.createCollection('documents');
-    const chunksCollection = await db.createCollection('document_chunks');
+    const documentsCollection = client.collection('documents');
+    const chunksCollection = client.collection('document_chunks');
 
     // Delete the main document
     await documentsCollection.deleteOne({ _id: document_id });

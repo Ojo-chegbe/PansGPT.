@@ -46,7 +46,9 @@ export default function DocumentUploadForm() {
     fetchLevel();
   }, [session]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
     const { name, value, type } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -246,6 +248,28 @@ export default function DocumentUploadForm() {
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"
             placeholder="e.g., Titration"
           />
+        </div>
+
+        <div>
+          <label htmlFor="level" className="block text-sm font-medium text-gray-700">
+            Level *
+          </label>
+          <select
+            id="level"
+            name="level"
+            required
+            value={formData.level}
+            onChange={handleInputChange}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"
+          >
+            <option value="">Select level</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+            <option value="300">300</option>
+            <option value="400">400</option>
+            <option value="500">500</option>
+            <option value="600">600</option>
+          </select>
         </div>
 
         <div>

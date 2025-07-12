@@ -13,9 +13,9 @@ interface MarkdownWithMathProps {
 // Auto-convert <sub>...</sub> and <sup>...</sup> to LaTeX math
 function htmlSubSupToLatex(markdown: string): string {
   // Replace <sub>...</sub> with _{...} inside $...$
-  markdown = markdown.replace(/([A-Za-z0-9])<sub>(.*?)<\/sub>/g, '$$$1_{$2}$$');
+  markdown = markdown.replace(/([A-Za-z0-9\)\]\-\+])<sub>(.*?)<\/sub>/g, '$$$1_{$2}$$');
   // Replace <sup>...</sup> with ^{...} inside $...$
-  markdown = markdown.replace(/([A-Za-z0-9])<sup>(.*?)<\/sup>/g, '$$$1^{$2}$$');
+  markdown = markdown.replace(/([A-Za-z0-9\)\]\-\+])<sup>(.*?)<\/sup>/g, '$$$1^{$2}$$');
   // Collapse multiple adjacent $...$ into one (for inline math)
   markdown = markdown.replace(/\$\$([^\$]+)\$\$\s*\$\$([^\$]+)\$\$/g, '$$$1 $2$$');
   return markdown;

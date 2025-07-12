@@ -80,9 +80,9 @@ cd your-project-name
 ```
 
 ### 2. Install Dependencies
-```bash
+   ```bash
 # Install Node.js dependencies
-npm install
+   npm install
 
 # Install Python dependencies for embedding service
 cd embedding-service
@@ -119,7 +119,7 @@ NEXT_PUBLIC_EMBEDDING_SERVICE_URL="http://localhost:8000"
 ```
 
 ### 4. Database Setup
-```bash
+   ```bash
 # Generate Prisma client
 npx prisma generate
 

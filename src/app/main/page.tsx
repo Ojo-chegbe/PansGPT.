@@ -42,7 +42,8 @@ const MessageList = React.memo(({
   handleEdit, 
   handleEditCancel, 
   handleEditSave, 
-  handleCopy 
+  handleCopy,
+  isLoading
 }: {
   messages: ChatMessage[];
   editingIdx: number | null;
@@ -53,6 +54,7 @@ const MessageList = React.memo(({
   handleEditCancel: () => void;
   handleEditSave: (idx: number) => void;
   handleCopy: (idx: number, content: string) => void;
+  isLoading: boolean;
 }) => (
   <div className="max-w-6xl mx-auto w-full flex flex-col gap-4 md:gap-8">
     {messages.map((message, idx) => (
@@ -82,7 +84,7 @@ const MessageList = React.memo(({
                     onClick={() => handleEditSave(idx)}
                     className="px-2 py-1 text-xs md:text-sm bg-green-500 text-white rounded hover:bg-green-600"
                   >
-                    Save
+                    Send
                   </button>
                 </div>
               </div>
@@ -123,6 +125,24 @@ const MessageList = React.memo(({
         </div>
       </div>
     ))}
+    
+    {/* Loading indicator */}
+    {isLoading && (
+      <div className="flex justify-start">
+        <div className="relative group max-w-[90%] md:max-w-[80%]">
+          <div className="rounded-lg p-2.5 md:p-3 text-white bg-gray-800 border border-gray-700 animate-pulse">
+            <div className="flex items-center gap-3">
+              <div className="flex space-x-1">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-bounce"></div>
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              </div>
+              <span className="text-sm text-gray-300 font-medium">PANSGPT is thinking...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
 ));
 
@@ -144,10 +164,14 @@ const InputArea = React.memo(({
     onSubmit={handleSend}
     className={`fixed bottom-0 z-40 transition-all duration-300 ${sidebarOpen ? 'left-0 md:left-72 w-full md:w-[calc(100%-18rem)]' : 'left-0 w-full'} px-3 md:px-24 pb-3 md:pb-8`}
   >
-    <div className="bg-black rounded-lg flex items-center px-3 md:px-8 py-3 md:py-6 max-w-6xl mx-auto border-2 border-white">
+    <div className={`bg-black rounded-lg flex items-center px-3 md:px-8 py-3 md:py-6 max-w-6xl mx-auto border-2 transition-all duration-300 ${
+      isLoading 
+        ? 'border-green-400 shadow-lg shadow-green-400/20' 
+        : 'border-white'
+    }`}>
       <input
         type="text"
-        placeholder="Ask a question from any course."
+        placeholder={isLoading ? "PANSGPT is processing your message..." : "Ask a question from any course."}
         className="flex-1 bg-transparent outline-none text-sm md:text-base text-white placeholder-gray-400"
         value={input}
         onChange={handleInputChange}
@@ -155,10 +179,17 @@ const InputArea = React.memo(({
       />
       <button
         type="submit"
-        className="ml-3 md:ml-4 bg-white text-black px-2.5 md:px-6 py-1.5 md:py-2 rounded-md font-semibold text-sm md:text-base"
+        className="ml-3 md:ml-4 bg-white text-black px-2.5 md:px-6 py-1.5 md:py-2 rounded-md font-semibold text-sm md:text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         disabled={isLoading || !input.trim()}
       >
-        Send
+        {isLoading ? (
+          <>
+            <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+            <span>Thinking...</span>
+          </>
+        ) : (
+          'Send'
+        )}
       </button>
     </div>
   </form>
@@ -218,27 +249,35 @@ export default function MainPage() {
       content: editingText.trim()
     };
 
+    // Remove all messages after the edited one
+    const messagesToKeep = updatedMessages.slice(0, idx + 1);
+
+    // Immediately update UI with edited message and loading placeholder for AI
+    const aiLoadingMessage = {
+      role: 'model' as MessageRole,
+      content: '...', // Loading placeholder
+      hasContext: false,
+      createdAt: new Date().toISOString(),
+    };
+    const newMessagesLoading = [...messagesToKeep, aiLoadingMessage];
+    setConversations(prev => prev.map(c =>
+      c.id === activeId
+        ? { ...c, messages: newMessagesLoading }
+        : c
+    ));
+    setMessages(newMessagesLoading);
     setEditingIdx(null);
     setEditingText("");
-
-    // If it's the last message, just update it
-    if (idx === messagesInConv.length - 1) {
-      setConversations(prev => prev.map(c =>
-        c.id === activeId
-          ? { ...c, messages: updatedMessages }
-          : c
-      ));
-      return;
-    }
-
-    // If not the last message, regenerate AI response and truncate
     setIsLoading(true);
     try {
-      const messagesToKeep = updatedMessages.slice(0, idx + 1);
+      // Send the edited message to the AI
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: editingText.trim() }),
+        body: JSON.stringify({ 
+          message: editingText.trim(),
+          conversationHistory: messagesToKeep // Provide context for the AI
+        }),
       });
 
       if (!response.ok) {
@@ -253,14 +292,14 @@ export default function MainPage() {
         createdAt: new Date().toISOString(),
       };
 
-      // Only keep up to the edited message, then add the new AI response
+      // Replace the loading placeholder with the real AI response
       const newMessages = [...messagesToKeep, aiMessage];
-
       setConversations(prev => prev.map(c =>
         c.id === activeId
           ? { ...c, messages: newMessages }
           : c
       ));
+      setMessages(newMessages);
     } catch (error) {
       console.error('Error regenerating response:', error);
     } finally {
@@ -291,23 +330,25 @@ export default function MainPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: undefined, // Let backend create a new one
           title: "New Conversation",
           messages: [],
           userId: session.user.id,
         }),
         credentials: "include",
       });
-      const data = await response.json();
-      if (response.ok && data.conversation) {
-        setConversations(prev => [...prev, {
-          id: data.conversation.id,
-          name: data.conversation.title,
-          messages: [],
-        }]);
-        setActiveId(data.conversation.id);
-    setEditingIdx(null);
-    setEditingText("");
+      
+      if (response.ok) {
+        const newConversation = await response.json();
+        const formattedConversation = {
+          id: newConversation.id,
+          name: newConversation.title,
+          messages: []
+        };
+        setConversations(prev => [formattedConversation, ...prev]);
+        setActiveId(newConversation.id);
+        setMessages([]);
+        setEditingIdx(null);
+        setEditingText("");
       }
     } catch (err) {
       console.error("Error creating new conversation:", err);
@@ -326,18 +367,13 @@ export default function MainPage() {
           const subscriptionData = await subscriptionResponse.json();
           setUserSubscription(subscriptionData);
 
-          // First, clean up any empty conversations
-          await fetch('/api/conversations/cleanup', {
-            method: 'POST',
-            credentials: 'include',
-          });
-
-          // Then load the remaining conversations
+          // Load conversations from database
           const response = await fetch(`/api/conversations?userId=${session.user.id}&limit=10&messageLimit=50`, {
             credentials: 'include',
           });
           const data = await response.json();
-          if (data.conversations) {
+          
+          if (data.conversations && data.conversations.length > 0) {
             const formattedConversations = data.conversations.map((conv: any) => ({
               id: conv.id,
               name: conv.title,
@@ -348,62 +384,67 @@ export default function MainPage() {
               }))
             }));
             setConversations(formattedConversations);
-            if (formattedConversations.length > 0) {
-              setActiveId(formattedConversations[0].id);
-              setMessages(formattedConversations[0].messages);
-            }
+            setActiveId(formattedConversations[0].id);
+            setMessages(formattedConversations[0].messages);
+          } else {
+            // Create a new conversation in the database if none exist
+            await createNewConversation();
           }
         } catch (err) {
           console.error("Error loading user data:", err);
+          // Create a new conversation if there's an error
+          await createNewConversation();
         }
       }
     }
     loadData();
   }, [session?.user?.id]);
 
-  // Save conversation when messages change - Optimized to reduce API calls
-  useEffect(() => {
-    async function saveConversation() {
-      if (!activeConv || !session?.user?.id || isLoading) return; // Don't save while loading
+  // Function to create a new conversation in the database
+  const createNewConversation = async () => {
+    if (!session?.user?.id) return;
+    
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "New Conversation",
+          messages: [],
+          userId: session.user.id,
+        }),
+        credentials: "include",
+      });
       
-      try {
-        // Don't save if there are no messages
-        if (!activeConv.messages || activeConv.messages.length === 0) {
-          return;
-        }
-
-        const response = await fetch("/api/conversations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: activeConv.id,
-            title: activeConv.name,
-            messages: activeConv.messages,
-            userId: session.user.id
-          }),
-          credentials: 'include',
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Failed to save conversation");
-        }
-
-        const savedConversation = await response.json();
-        setConversations(prev => prev.map(c =>
-          c.id === savedConversation.id ? savedConversation : c
-        ));
-      } catch (err) {
-        console.error("Error saving conversation:", err);
-        // Optionally show a user-friendly error message
-        // You could add a toast notification here
+      if (response.ok) {
+        const newConversation = await response.json();
+        const formattedConversation = {
+          id: newConversation.id,
+          name: newConversation.title,
+          messages: []
+        };
+        setConversations([formattedConversation]);
+        setActiveId(newConversation.id);
+        setMessages([]);
       }
+    } catch (err) {
+      console.error("Error creating new conversation:", err);
     }
+  };
 
-    // Increased debounce time to reduce API calls
-    const timeoutId = setTimeout(saveConversation, 2000);
-    return () => clearTimeout(timeoutId);
-  }, [activeConv?.messages, session?.user?.id, isLoading]); // More specific dependencies
+  // Remove localStorage usage - database is now the single source of truth
+  // useEffect(() => {
+  //   localStorage.setItem('ai_conversations', JSON.stringify(conversations));
+  //   if (activeId) localStorage.setItem('ai_activeId', activeId);
+  // }, [conversations, activeId]);
+
+  // Remove localStorage restoration - we load from database instead
+  // useEffect(() => {
+  //   const storedId = localStorage.getItem('ai_activeId');
+  //   if (storedId && conversations.some(c => c.id === storedId)) {
+  //     setActiveId(storedId);
+  //   }
+  // }, [conversations]);
 
   // Memoize sorted messages to prevent unnecessary sorting
   const sortedMessages = useMemo(() => {
@@ -441,10 +482,13 @@ export default function MainPage() {
     fetchLevel();
   }, [session]);
 
-  // Send message - Remove messages from dependencies to prevent recreation
+  // Send message - Database-first approach with immediate UI update
   const handleSend = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
+
+    // Set loading state immediately for better UX
+    setIsLoading(true);
 
     const userMessage: ExtendedChatMessage = {
       role: 'user',
@@ -452,17 +496,29 @@ export default function MainPage() {
       createdAt: new Date().toISOString(),
     };
 
-    setMessages((prev: ExtendedChatMessage[]) => [...prev, userMessage]);
+    // Immediately update UI: add user message and loading placeholder for AI
+    const aiLoadingMessage: ExtendedChatMessage = {
+      role: 'model',
+      content: '...', // Loading placeholder
+      createdAt: new Date().toISOString(),
+    };
+    const newMessages = [...(activeConv?.messages || []), userMessage, aiLoadingMessage];
+    setMessages(newMessages);
+    setConversations(prev => prev.map(c =>
+      c.id === activeId
+        ? { ...c, messages: newMessages }
+        : c
+    ));
     setInput('');
-    setIsLoading(true);
 
     try {
+      // Get AI response
       const chatResponse = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           message: userMessage.content,
-          conversationHistory: sortedMessages, // Use sortedMessages instead of messages
+          conversationHistory: [...(activeConv?.messages || []), userMessage],
           level: userLevel
         }),
       });
@@ -472,23 +528,93 @@ export default function MainPage() {
       }
       
       const data = await chatResponse.json();
-      setMessages((prev: ExtendedChatMessage[]) => [...prev, { 
-        role: 'model', 
+      const aiMessage = {
+        role: 'model' as MessageRole,
         content: data.response,
         hasContext: data.hasContext,
         createdAt: new Date().toISOString(),
-      }]);
+      };
+      
+      // Generate title from first user message if this is a new conversation
+      let conversationTitle = activeConv?.name || 'New Conversation';
+      if (activeConv?.messages.length === 0) {
+        // Use the first user message as the title (truncate if too long)
+        const titleFromMessage = userMessage.content.trim();
+        conversationTitle = titleFromMessage.length > 50 
+          ? titleFromMessage.substring(0, 50) + '...' 
+          : titleFromMessage;
+      }
+      
+      // Replace loading placeholder with real AI message
+      const updatedMessages = [...(activeConv?.messages || []), userMessage, aiMessage];
+      setMessages(updatedMessages);
+      setConversations(prev => prev.map(c =>
+        c.id === activeId
+          ? { ...c, messages: updatedMessages, name: conversationTitle }
+          : c
+      ));
+      
+      // Save conversation to database with both messages
+      if (session?.user?.id) {
+        const payload = {
+          id: activeId,
+          title: conversationTitle,
+          messages: updatedMessages,
+          userId: session.user.id
+        };
+
+        const saveResponse = await fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          credentials: 'include',
+        });
+
+        if (saveResponse.ok) {
+          const savedConversation = await saveResponse.json();
+          // Update local state with the saved conversation
+          const updatedConversation = {
+            id: savedConversation.id,
+            name: savedConversation.title,
+            messages: savedConversation.messages.map((msg: any) => ({
+              role: msg.role as MessageRole,
+              content: msg.content,
+              createdAt: new Date(msg.createdAt)
+            }))
+          };
+          setConversations(prev => prev.map(c =>
+            c.id === activeId
+              ? updatedConversation
+              : c
+          ));
+          setMessages(updatedConversation.messages);
+          if (savedConversation.id !== activeId) {
+            setActiveId(savedConversation.id);
+          }
+        } else {
+          const errorText = await saveResponse.text();
+          console.error("Failed to save conversation to database:", saveResponse.status, errorText);
+        }
+      } else {
+        console.error("No session or user ID available for saving conversation");
+      }
     } catch (error) {
       console.error('Error in chat:', error);
-      setMessages((prev: ExtendedChatMessage[]) => [...prev, {
-        role: 'model',
+      const errorMessage = {
+        role: 'model' as MessageRole,
         content: 'I apologize, but I encountered an error. Please try again.',
         createdAt: new Date().toISOString(),
-      }]);
+      };
+      setMessages((prev: ExtendedChatMessage[]) => [...prev.slice(0, -1), errorMessage]);
+      setConversations(prev => prev.map(c =>
+        c.id === activeId
+          ? { ...c, messages: [...(activeConv?.messages || []), userMessage, errorMessage] }
+          : c
+      ));
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, sortedMessages, userLevel]); // Use sortedMessages instead of messages
+  }, [input, isLoading, activeConv, activeId, session?.user?.id, userLevel]);
 
   // Chat history actions
   function handleSelectConv(id: string) {
@@ -514,8 +640,17 @@ export default function MainPage() {
       // Update local state after successful deletion
     setConversations(prev => prev.filter((_, i) => i !== idx));
     if (conversations[idx]?.id === activeId) {
-      // If deleting active, switch to another or none
-      setActiveId(conversations.length > 1 ? conversations[(idx === 0 ? 1 : 0)].id : null);
+        // If deleting active, switch to another or create new one
+        if (conversations.length > 1) {
+          setActiveId(conversations[(idx === 0 ? 1 : 0)].id);
+        } else {
+          // If this was the last conversation, create a new one
+          const newId = Date.now().toString();
+          const newConversation = { id: newId, name: 'New Conversation', messages: [] };
+          setConversations([newConversation]);
+          setActiveId(newId);
+          setMessages([]);
+        }
     }
     setHistoryMenuIdx(null);
     } catch (err) {
@@ -527,10 +662,34 @@ export default function MainPage() {
     setRenameText(conversations[idx].name);
     setHistoryMenuIdx(null);
   }
-  function handleRenameSave(idx: number) {
-    setConversations(prev => prev.map((c, i) => i === idx ? { ...c, name: renameText } : c));
+  async function handleRenameSave(idx: number) {
+    const conv = conversations[idx];
+    const updatedName = renameText.trim();
+    if (!updatedName || !conv) {
+      setRenamingIdx(null);
+      setRenameText("");
+      return;
+    }
+    // Update UI immediately
+    setConversations(prev => prev.map((c, i) => i === idx ? { ...c, name: updatedName } : c));
     setRenamingIdx(null);
     setRenameText("");
+    // Persist to backend
+    try {
+      await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: conv.id,
+          title: updatedName,
+          messages: conv.messages,
+          userId: session?.user?.id
+        }),
+        credentials: 'include',
+      });
+    } catch (err) {
+      console.error('Error renaming conversation:', err);
+    }
   }
   function handleRenameCancel() {
     setRenamingIdx(null);
@@ -539,13 +698,13 @@ export default function MainPage() {
 
   // Add this useEffect to auto-create a conversation on mount:
   React.useEffect(() => {
-    if (conversations.length === 0) {
+    if (conversations.length === 0 && session?.user?.id) {
       const id = Date.now().toString();
       setConversations([{ id, name: 'New Conversation', messages: [] }]);
       setActiveId(id);
     }
     // eslint-disable-next-line
-  }, []);
+  }, [conversations.length, session?.user?.id]);
 
   // Add authentication check
   useEffect(() => {
@@ -558,6 +717,16 @@ export default function MainPage() {
   const handleLogout = async () => {
     await signOut({ redirect: true, callbackUrl: "/" });
   };
+
+  // Add this function to delete the active conversation from the top nav bar
+  function handleDeleteActiveConv() {
+    if (!activeId) return;
+    const idx = conversations.findIndex(c => c.id === activeId);
+    if (idx !== -1) {
+      handleDeleteConv(idx);
+    }
+    setShowMenu(false); // Close the menu after deleting
+  }
 
   // Don't render anything while checking authentication
   if (status === "loading") {
@@ -577,7 +746,7 @@ export default function MainPage() {
     <div className="flex min-h-screen bg-black text-white">
       {/* Sidebar */}
       {sidebarOpen && (
-        <aside className="w-[85vw] md:w-72 bg-[#181A1B] h-screen fixed left-0 top-0 z-50 md:relative md:z-0 flex flex-col">
+        <aside className="w-[85vw] md:w-72 bg-[#181A1B] h-screen fixed left-0 top-0 z-50 flex flex-col">
           {/* Logo at the top */}
           <div className="flex items-center gap-2 mb-4 pt-4 px-4 shrink-0">
             <div className="w-16 h-16 md:w-32 md:h-32 relative">
@@ -620,7 +789,7 @@ export default function MainPage() {
                       >
                         <input
                           className="bg-gray-900 text-white rounded px-2 py-1 text-xs border border-gray-600 flex-1"
-                          value={renameText}
+                          value={renameText || ""}
                           onChange={e => setRenameText(e.target.value)}
                           autoFocus
                         />
@@ -656,46 +825,56 @@ export default function MainPage() {
               </ul>
             </div>
           </div>
-          {/* Buy credits button at the bottom */}
+          {/* Take a Quiz button at the bottom */}
           <div className="px-4 mt-4 mb-4 md:mt-10 md:mb-8 shrink-0">
-            <button className="w-full text-left text-gray-400 hover:text-white text-sm md:text-lg font-semibold">Upgrade plan or buy credits</button>
+            <button
+              className="w-full text-center text-white bg-green-600 hover:bg-green-700 text-sm md:text-lg font-semibold rounded-md py-2 px-4 transition"
+              onClick={() => {
+                if (userSubscription && (userSubscription.isActive || userSubscription.isTrial)) {
+                  window.location.href = '/quiz';
+                } else {
+                  window.location.href = '/plan';
+                }
+              }}
+              disabled={!userSubscription}
+            >
+              Take a Quiz
+            </button>
           </div>
         </aside>
       )}
-      {/* Sidebar toggle button */}
-      <button
-        className={`fixed md:static top-4 left-4 md:top-auto md:left-auto z-50 flex items-center justify-center rounded-full transition-all duration-200
-          bg-gray-900 border-2 border-white hover:bg-gray-700
-          md:ml-6 md:mt-4
-        `}
-        style={{ width: 36, height: 36, fontSize: 24 }}
-        onClick={() => setSidebarOpen((open) => !open)}
-        aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-      >
-        {sidebarOpen ? (
-          <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-            <path d="M18 6L6 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-            <path d="M6 6L18 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-          </svg>
-        ) : (
-          <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-            <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-            <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-            <line x1="4" y1="18" x2="20" y2="18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-          </svg>
-        )}
-      </button>
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-h-screen bg-black">
         {/* Top Bar - Fixed */}
         <div className="fixed top-0 right-0 left-0 md:left-72 z-40 bg-black flex items-center px-3 md:px-6 py-2 md:py-3 gap-2 md:gap-4">
+          {/* Sidebar toggle button - moved here */}
+          <button
+            className={`flex items-center justify-center rounded-full transition-all duration-200 bg-gray-900 border-2 border-white hover:bg-gray-700`}
+            style={{ width: 36, height: 36, fontSize: 24 }}
+            onClick={() => setSidebarOpen((open) => !open)}
+            aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+          >
+            {sidebarOpen ? (
+              <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path d="M18 6L6 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                <path d="M6 6L18 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+              </svg>
+            ) : (
+              <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                <line x1="4" y1="18" x2="20" y2="18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+              </svg>
+            )}
+          </button>
           {/* Left: empty for spacing on mobile, hidden on desktop */}
           <div className="w-8 md:hidden" />
           {/* Center: Plan status - centered on mobile, right on desktop */}
           <div className="flex-1 flex justify-center md:justify-end">
             <button
               className="flex items-center gap-1.5 bg-black px-2 md:px-3 py-1 md:py-2 rounded-lg font-medium hover:bg-gray-700 transition text-xs"
-              onClick={() => window.location.href = '/plan'}
+              onClick={() => { window.location.href = '/plan'; }}
+              disabled={!userSubscription}
             >
               {userSubscription?.isTrial ? 'Free Trial' : userSubscription?.planType === 'paid' ? 'Premium Plan' : 'No Active Plan'}
             </button>
@@ -720,7 +899,9 @@ export default function MainPage() {
                   >
                     View Profile
                   </button>
-                  <button className="block w-full text-left px-3 py-1.5 md:px-4 md:py-2 hover:bg-gray-700 text-xs md:text-sm">Help & FAQs</button>
+                  <button className="block w-full text-left px-3 py-1.5 md:px-4 md:py-2 hover:bg-gray-700 text-xs md:text-sm"
+                    onClick={() => router.push('/faq')}
+                  >Help & FAQs</button>
                   <button 
                     className="block w-full text-left px-3 py-1.5 md:px-4 md:py-2 hover:bg-gray-700 text-xs md:text-sm"
                     onClick={() => router.push('/feedback')}
@@ -751,14 +932,14 @@ export default function MainPage() {
               </button>
               {showMenu && (
                 <div className="absolute right-0 mt-2 w-32 bg-[#232625] rounded-lg shadow-lg py-2 z-50">
-                  <button className="block w-full text-left px-4 py-2 hover:bg-gray-700 text-sm">Delete</button>
+                  <button className="block w-full text-left px-4 py-2 hover:bg-gray-700 text-sm" onClick={handleDeleteActiveConv}>Delete</button>
                 </div>
               )}
             </div>
           </div>
         </div>
         {/* Chat Area - Adjusted with top padding to account for fixed topbar */}
-        <div className="flex-1 flex flex-col px-3 md:px-8 pt-16 md:pt-20 pb-24 md:pb-40 gap-4 md:gap-8 overflow-y-auto bg-black">
+        <div className={`flex-1 flex flex-col px-3 md:px-8 pt-16 md:pt-20 pb-24 md:pb-40 gap-4 md:gap-8 overflow-y-auto bg-black transition-all duration-300 ${sidebarOpen ? 'md:ml-72' : ''}`}>
           {messages.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
               <span className="text-2xl md:text-5xl font-bold text-center text-white">
@@ -776,11 +957,11 @@ export default function MainPage() {
               handleEditCancel={handleEditCancel}
               handleEditSave={handleEditSave}
               handleCopy={handleCopy}
+              isLoading={isLoading}
             />
           )}
         </div>
         {/* Input Area */}
-        {activeConv && (
           <InputArea
             input={input}
             handleInputChange={handleInputChange}
@@ -788,7 +969,6 @@ export default function MainPage() {
             isLoading={isLoading}
             sidebarOpen={sidebarOpen}
           />
-        )}
       </div>
     </div>
   );
