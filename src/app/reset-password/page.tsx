@@ -1,16 +1,41 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { supabase } from '@/lib/supabase';
 
-export default function ResetPasswordPage() {
+export default function ResetPasswordPageWrapper() {
+  return (
+    <Suspense>
+      <ResetPasswordPage />
+    </Suspense>
+  );
+}
+
+function ResetPasswordPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const token = searchParams.get("token") || "";
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<null | "success" | "error">(null);
   const [error, setError] = useState("");
+  const [canReset, setCanReset] = useState(false);
+
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setCanReset(true);
+      }
+    });
+    // If already in recovery mode (e.g., after redirect), allow reset
+    if (window.location.hash.includes('type=recovery')) {
+      setCanReset(true);
+    }
+    return () => {
+      data?.subscription?.unsubscribe();
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,17 +53,12 @@ export default function ResetPasswordPage() {
     }
     setIsLoading(true);
     try {
-      const res = await fetch("/api/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
-      });
-      if (res.ok) {
+      const { data, error } = await supabase.auth.updateUser({ password });
+      if (!error) {
         setStatus("success");
         setTimeout(() => router.push("/login"), 2000);
       } else {
-        const data = await res.json();
-        setError(data.error || "Failed to reset password.");
+        setError(error.message || "Failed to reset password.");
         setStatus("error");
       }
     } catch (err) {

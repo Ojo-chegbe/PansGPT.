@@ -104,7 +104,7 @@ export async function POST(req: Request) {
         { role: "user", content: "Generate questions based on the above material." }
       ];
       const aiResponse = await generateChatResponse(GOOGLE_API_KEY, messagesForAI, {
-        maxOutputTokens: 2048,
+        maxOutputTokens: 3072,
         temperature: 0.3,
         topK: 40,
         topP: 0.95,

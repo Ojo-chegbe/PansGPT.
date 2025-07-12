@@ -16,7 +16,8 @@ interface UploadFormData {
 }
 
 export default function DocumentUploadForm() {
-  const { data: session } = useSession();
+  const sessionResult = useSession();
+  const session = sessionResult?.data;
   const router = useRouter();
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);

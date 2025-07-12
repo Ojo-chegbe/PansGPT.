@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckIcon } from '@heroicons/react/24/solid';
 import { useSession } from 'next-auth/react';
 import Script from 'next/script';
+import { Suspense } from "react";
 
 interface SubscriptionStatus {
   isActive: boolean;
@@ -13,7 +14,15 @@ interface SubscriptionStatus {
   startDate: string;
 }
 
-export default function PlanPage() {
+export default function PlanPageWrapper() {
+  return (
+    <Suspense>
+      <PlanPage />
+    </Suspense>
+  );
+}
+
+function PlanPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);

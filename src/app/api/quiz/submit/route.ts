@@ -149,7 +149,7 @@ export async function POST(req: Request) {
         ];
         try {
           const aiResponse = await generateChatResponse(GOOGLE_API_KEY, messagesForAI, {
-            maxOutputTokens: 512,
+            maxOutputTokens: 1024,
             temperature: 0.1,
             topK: 40,
             topP: 0.95,

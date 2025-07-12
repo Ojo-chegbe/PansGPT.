@@ -6,7 +6,9 @@ import DocumentUploadForm from '../../../components/DocumentUploadForm';
 import Head from 'next/head';
 
 const UploadDocumentPage: NextPage = () => {
-  const { data: session, status } = useSession();
+  const sessionResult = useSession();
+  const session = sessionResult?.data;
+  const status = sessionResult?.status;
   const router = useRouter();
 
   // Redirect if not authenticated

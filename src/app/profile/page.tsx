@@ -191,7 +191,7 @@ export default function ProfilePage() {
                 {user.bio}
               </div>
             )}
-            <button className="mt-2 px-8 py-2 bg-gradient-to-r from-green-400 to-green-600 text-black rounded-2xl font-bold text-lg shadow-lg hover:from-green-300 hover:to-green-500 hover:scale-105 transition-all duration-200" onClick={handleEdit}>Edit Profile</button>
+            {/* Removed Edit Profile button as all data is from the database */}
           </div>
         </div>
 

@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   try {
     const { name, level, message } = await request.json();
 
-    const { data, error } = await resend.emails.send({
+    const { error } = await resend.emails.send({
       from: 'PANSite Feedback <onboarding@resend.dev>',
       to: 'ojochegbeng@gmail.com',
       subject: `New Feedback from ${name}`,

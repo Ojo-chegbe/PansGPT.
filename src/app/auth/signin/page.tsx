@@ -2,8 +2,17 @@
 import { signIn } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
+import { Suspense } from "react";
 
-export default function SignIn() {
+export default function SignInPage() {
+  return (
+    <Suspense>
+      <SignIn />
+    </Suspense>
+  );
+}
+
+function SignIn() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const error = searchParams.get("error");
