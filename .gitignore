@@ -155,9 +155,6 @@ temp/
 *.sqlite
 *.sqlite3
 
-# Uploads
-uploads/
-public/uploads/
 
 # Generated files
 generated/ 

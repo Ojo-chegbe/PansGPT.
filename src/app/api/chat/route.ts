@@ -30,8 +30,7 @@ export async function POST(req: Request) {
     }
 
     // Search for relevant document chunks with expanded query context
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
-    const searchResponse = await fetch(`${baseUrl}/api/search`, {
+    const searchResponse = await fetch("http://localhost:3000/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 

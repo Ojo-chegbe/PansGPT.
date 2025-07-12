@@ -1,7 +1,7 @@
 // Embedding service configuration
 export const EMBEDDING_SERVICE_CONFIG = {
   // Local development
-  local: process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || 'http://localhost:8000',
+  local: 'http://localhost:8000',
   
   // Render hosted service (replace with your actual URL)
   production: process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || 'https://pansgpt.onrender.com',

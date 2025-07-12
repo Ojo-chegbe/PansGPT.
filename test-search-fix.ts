@@ -147,8 +147,7 @@ async function testSearch() {
     // Test API endpoint
     console.log('\n6. Testing API endpoint...');
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
-      const apiResponse = await fetch(`${baseUrl}/api/search`, {
+      const apiResponse = await fetch("http://localhost:3000/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
