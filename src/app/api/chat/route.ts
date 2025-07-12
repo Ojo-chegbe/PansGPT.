@@ -30,7 +30,8 @@ export async function POST(req: Request) {
     }
 
     // Search for relevant document chunks with expanded query context
-    const searchResponse = await fetch("https://pansgpt.vercel.app/api/search", {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+    const searchResponse = await fetch(`${baseUrl}/api/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 
