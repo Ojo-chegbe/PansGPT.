@@ -312,8 +312,8 @@ export default function QuizHistory() {
                 const scoreBadge = getScoreBadge(result.percentage);
                 return (
                   <div key={result.id} className="p-6 hover:bg-green-900/20">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div className="flex-1 w-full">
                         <div className="flex items-center justify-between">
                           <h3 className="text-lg font-medium text-white">
                             {result.quiz.title}
@@ -325,7 +325,7 @@ export default function QuizHistory() {
                         {result.quiz.topic && (
                           <p className="text-sm text-gray-300 mt-1">Topic: {result.quiz.topic}</p>
                         )}
-                        <div className="flex items-center mt-2 space-x-4 text-sm text-gray-300">
+                        <div className="flex flex-wrap items-center mt-2 space-x-4 text-sm text-gray-300">
                           <span>Level {result.quiz.level}</span>
                           <span>•</span>
                           <span>{result.quiz.difficulty}</span>
@@ -339,7 +339,7 @@ export default function QuizHistory() {
                           )}
                         </div>
                       </div>
-                      <div className="ml-6 text-right flex flex-col items-end">
+                      <div className="text-right flex flex-col items-end w-full md:w-auto md:ml-6 mt-4 md:mt-0">
                         <div className="flex items-center space-x-2">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${scoreBadge.text === 'Needs Work' ? 'bg-red-900/60 text-red-400' : 'bg-green-900/60 text-green-400'}`}>{scoreBadge.text}</span>
                           <div className={`text-2xl font-bold ${getScoreColor(result.percentage).replace('text-red-800','text-red-400').replace('text-green-600','text-green-400')}`}>
