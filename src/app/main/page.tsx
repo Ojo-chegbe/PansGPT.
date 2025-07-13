@@ -747,19 +747,32 @@ export default function MainPage() {
       {/* Sidebar */}
       {sidebarOpen && (
         <aside className="w-[85vw] md:w-72 bg-[#181A1B] h-screen fixed left-0 top-0 z-50 flex flex-col">
-          {/* Logo at the top */}
-          <div className="flex items-center gap-2 mb-4 pt-4 px-4 shrink-0">
-            <div className="w-16 h-16 md:w-32 md:h-32 relative">
-              <Image
-                src="/uploads/Logo 2.png"
-                alt="Logo"
-                fill
-                className="object-contain"
-              />
-            </div>
+          {/* Close button for mobile */}
+          <button
+            className="absolute top-3 right-3 md:hidden text-gray-400 hover:text-white text-3xl z-50"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close sidebar"
+          >
+            &times;
+          </button>
+          {/* Take a Quiz button at the top */}
+          <div className="pt-5 pb-2 flex-shrink-0">
+            <button
+              className="w-auto px-6 ml-4 text-left text-white bg-green-600 hover:bg-green-700 text-sm md:text-lg font-semibold rounded-md py-2 transition"
+              onClick={() => {
+                if (userSubscription && (userSubscription.isActive || userSubscription.isTrial)) {
+                  window.location.href = '/quiz';
+                } else {
+                  window.location.href = '/plan';
+                }
+              }}
+              disabled={!userSubscription}
+            >
+              Take a Quiz
+            </button>
           </div>
           {/* Chat history header with new chat icon */}
-          <div className="flex items-center justify-between px-4 mb-3">
+          <div className="flex items-center justify-between px-4 mb-3 mt-2">
             <div className="text-base md:text-lg font-semibold">Chat History</div>
             <button
               className="p-1 rounded hover:bg-gray-800 text-gray-300"
@@ -800,7 +813,7 @@ export default function MainPage() {
                       <>
                         <span className="truncate flex-1">{conv.name}</span>
                         {/* Three-dot menu (desktop only) */}
-                        <div className="hidden md:block relative">
+                        <div className="relative">
                           <button
                             className="p-1 ml-2 rounded hover:bg-gray-800 text-gray-300"
                             onClick={e => { e.stopPropagation(); setHistoryMenuIdx(idx === historyMenuIdx ? null : idx); }}
@@ -825,21 +838,16 @@ export default function MainPage() {
               </ul>
             </div>
           </div>
-          {/* Take a Quiz button at the bottom */}
-          <div className="px-4 mt-4 mb-4 md:mt-10 md:mb-8 shrink-0">
-            <button
-              className="w-full text-center text-white bg-green-600 hover:bg-green-700 text-sm md:text-lg font-semibold rounded-md py-2 px-4 transition"
-              onClick={() => {
-                if (userSubscription && (userSubscription.isActive || userSubscription.isTrial)) {
-                  window.location.href = '/quiz';
-                } else {
-                  window.location.href = '/plan';
-                }
-              }}
-              disabled={!userSubscription}
-            >
-              Take a Quiz
-            </button>
+          {/* Logo at the bottom */}
+          <div className="mt-6 mb-4 pl-4 flex items-end">
+            <div className="w-24 h-24 md:w-32 md:h-32 relative">
+              <Image
+                src="/uploads/Logo 2.png"
+                alt="Logo"
+                fill
+                className="object-contain"
+              />
+            </div>
           </div>
         </aside>
       )}
