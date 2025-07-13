@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { generateChatResponse, ChatMessage } from "@/lib/google-ai";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_AI_API_KEY!;
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://pansgpt.vercel.app';
 
 interface DocumentChunk {
   chunk_text: string;
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
     }
 
     // Search for relevant document chunks with expanded query context
-    const searchResponse = await fetch("http://localhost:3000/api/search", {
+    const searchResponse = await fetch(`${BASE_URL}/api/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 
