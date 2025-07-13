@@ -71,6 +71,14 @@ export async function DELETE(request: NextRequest) {
       }
     });
 
+    // Also delete all sessions for this user and deviceId (force logout)
+    await (prisma as any).session.deleteMany({
+      where: {
+        userId: session.user.id,
+        clientDeviceId: deviceId
+      }
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error removing device:', error);

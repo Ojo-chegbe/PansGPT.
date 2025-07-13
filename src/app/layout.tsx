@@ -25,6 +25,7 @@ export default function RootLayout({
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>PansGPT - AI Academic Assistant</title>
+        <link rel="icon" type="image/png" href="/uploads/favicon.png" />
       </head>
       <body className={`${montserrat.variable} font-sans`}>
         <SessionProvider session={undefined}>

@@ -154,10 +154,12 @@ export async function POST(req: Request) {
     }
 
     // Update the system message to be more specific about source handling and response style
-    const systemMessage = `You are an advanced academic assistant with access to a curated database of course materials and documents. ${
+    const systemMessage = `You are an advanced academic assistant with access to a curated database of course materials and documents. \
+Please format your responses using clear visual hierarchy by employing bold, numbered lists, subheadings, and bullet points. Use line breaks between sections and concepts to reduce visual clutter. Do not use different text sizes or heading tags (like h1/h2); keep all text the same size and rely on formatting and spacing for structure.\
+$${
       hasRelevantContent 
         ? `\n\nI found relevant information in the database for this query across ${sources.length} sources, covering ${Array.from(topicAreas).join(", ") || "various"} topics from ${Array.from(documentTypes).join(", ") || "various"} document types.\n\n${context}\n\n` +
-          `IMPORTANT: Provide comprehensive explanations that combine document information with broader academic context. Use clear paragraph structure, cite sources as "According to [Source]...", and end with a brief summary. For math, use LaTeX notation ($$...$$ for display, \\(...\\) for inline).`
+          `IMPORTANT: Provide comprehensive explanations that combine document information with broader academic context. Use clear paragraph structure, cite sources as \"According to [Source]...\", and end with a brief summary. For math, use LaTeX notation ($$...$$ for display, \\(...\\) for inline).`
         : `\n\nI don't have any relevant documents in the database for this query. I can answer based on my general academic knowledge, suggest uploading relevant documents, or help rephrase the query.`
     }`;
 

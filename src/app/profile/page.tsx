@@ -5,9 +5,9 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import QuizSummaryCards from '@/components/QuizSummaryCards';
-import DeviceManagement from '@/components/DeviceManagement';
-import { clearDeviceId } from '@/lib/device-id';
+import QuizSummaryCards from '../../components/QuizSummaryCards';
+import DeviceManagement from '../../components/DeviceManagement';
+import { clearDeviceId } from '../../lib/device-id';
 
 interface TimetableEntry {
   id: string;
@@ -158,6 +158,16 @@ export default function ProfilePage() {
 
     setLoggingOut(true);
     try {
+      // Remove device from UserDevice table
+      const deviceId = localStorage.getItem('pansgpt_device_id');
+      if (deviceId) {
+        await fetch('/api/user/devices', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceId }),
+        });
+      }
+
       // Clear device ID from localStorage
       clearDeviceId();
       
