@@ -216,6 +216,7 @@ export default function MainPage() {
   const [renameText, setRenameText] = useState("");
   const [historyMenuIdx, setHistoryMenuIdx] = useState<number | null>(null);
   const [userLevel, setUserLevel] = useState<string>("");
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   // Helper to get active conversation
   const activeConv = conversations.find(c => c.id === activeId);
@@ -460,6 +461,13 @@ export default function MainPage() {
   useEffect(() => {
     setMessages(sortedMessages);
   }, [sortedMessages]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   // Memoize the input handler
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -728,6 +736,18 @@ export default function MainPage() {
     setShowMenu(false); // Close the menu after deleting
   }
 
+  // Prevent background scroll when sidebar is open (mobile)
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.classList.add('overflow-hidden');
+    } else {
+      document.body.classList.remove('overflow-hidden');
+    }
+    return () => {
+      document.body.classList.remove('overflow-hidden');
+    };
+  }, [sidebarOpen]);
+
   // Don't render anything while checking authentication
   if (status === "loading") {
     return (
@@ -947,7 +967,9 @@ export default function MainPage() {
           </div>
         </div>
         {/* Chat Area - Adjusted with top padding to account for fixed topbar */}
-        <div className={`flex-1 flex flex-col px-3 md:px-8 pt-16 md:pt-20 pb-24 md:pb-40 gap-4 md:gap-8 overflow-y-auto bg-black transition-all duration-300 ${sidebarOpen ? 'md:ml-72' : ''}`}>
+        <div className={`flex-1 flex flex-col px-3 md:px-8 pt-16 md:pt-20 pb-24 md:pb-40 gap-4 md:gap-8 overflow-y-auto bg-black transition-all duration-300 ${sidebarOpen ? 'md:ml-72' : ''}`}
+          style={{ position: 'relative' }}
+        >
           {messages.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
               <span className="text-2xl md:text-5xl font-bold text-center text-white">
@@ -955,18 +977,21 @@ export default function MainPage() {
               </span>
             </div>
           ) : (
-            <MessageList
-              messages={messages}
-              editingIdx={editingIdx}
-              editingText={editingText}
-              setEditingText={setEditingText}
-              copiedIdx={copiedIdx}
-              handleEdit={handleEdit}
-              handleEditCancel={handleEditCancel}
-              handleEditSave={handleEditSave}
-              handleCopy={handleCopy}
-              isLoading={isLoading}
-            />
+            <>
+              <MessageList
+                messages={messages}
+                editingIdx={editingIdx}
+                editingText={editingText}
+                setEditingText={setEditingText}
+                copiedIdx={copiedIdx}
+                handleEdit={handleEdit}
+                handleEditCancel={handleEditCancel}
+                handleEditSave={handleEditSave}
+                handleCopy={handleCopy}
+                isLoading={isLoading}
+              />
+              <div ref={chatEndRef} />
+            </>
           )}
         </div>
         {/* Input Area */}
