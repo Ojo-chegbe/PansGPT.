@@ -311,7 +311,11 @@ export default function QuizHistory() {
               {results.map((result) => {
                 const scoreBadge = getScoreBadge(result.percentage);
                 return (
-                  <div key={result.id} className="p-6 hover:bg-green-900/20">
+                  <div
+                    key={result.id}
+                    className="p-6 hover:bg-green-900/20 cursor-pointer transition"
+                    onClick={() => router.push(`/quiz/${result.quiz.id}/results?resultId=${result.id}`)}
+                  >
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                       <div className="flex-1 w-full">
                         <div className="flex items-center justify-between">
