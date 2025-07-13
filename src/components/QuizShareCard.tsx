@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Image from 'next/image';
 import html2canvas from 'html2canvas';
+import { createRoot } from 'react-dom/client';
 
 interface QuizShareCardProps {
   result: {
@@ -19,12 +20,14 @@ interface QuizShareCardProps {
     };
   };
   onShare?: (imageUrl: string) => void;
+  exportMode?: boolean;
 }
 
-export default function QuizShareCard({ result, onShare }: QuizShareCardProps) {
+export default function QuizShareCard({ result, onShare, exportMode = false }: QuizShareCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
 
   const getScoreMessage = (percentage: number) => {
     if (percentage >= 90) return '🔥 Outstanding Performance!';
@@ -65,21 +68,32 @@ export default function QuizShareCard({ result, onShare }: QuizShareCardProps) {
   };
 
   const generateShareImage = async () => {
-    if (!cardRef.current) return;
-
     setIsGenerating(true);
-    try {
-      const canvas = await html2canvas(cardRef.current, {
+    // Create a hidden export-mode card in the DOM
+    const exportDiv = document.createElement('div');
+    exportDiv.style.position = 'fixed';
+    exportDiv.style.left = '-9999px';
+    exportDiv.style.top = '0';
+    exportDiv.style.zIndex = '-1';
+    document.body.appendChild(exportDiv);
+    // Render export-mode card using React 18+ root API
+    const root = createRoot(exportDiv);
+    root.render(<QuizShareCard result={result} exportMode={true} />);
+    // Wait for render
+    setTimeout(async () => {
+      const cardNode = exportDiv.firstChild as HTMLElement;
+      const canvas = await html2canvas(cardNode, {
         backgroundColor: '#000000',
-        scale: 2, // Higher quality
+        scale: 2,
         useCORS: true,
         allowTaint: true,
-        width: 1080,
-        height: 1920,
+        width: 1000,
+        height: 1000,
       });
-
       const imageUrl = canvas.toDataURL('image/png');
-      
+      setGeneratedImageUrl(imageUrl);
+      root.unmount();
+      document.body.removeChild(exportDiv);
       if (onShare) {
         onShare(imageUrl);
       } else {
@@ -89,34 +103,94 @@ export default function QuizShareCard({ result, onShare }: QuizShareCardProps) {
         link.href = imageUrl;
         link.click();
       }
-    } catch (error) {
-      console.error('Error generating share image:', error);
-    } finally {
       setIsGenerating(false);
-    }
+    }, 100);
   };
 
   const shareToWhatsApp = async () => {
-    await generateShareImage();
+    // Generate image first if not already generated
+    if (!generatedImageUrl) {
+      await generateShareImage();
+    }
     
-    // Create share text for WhatsApp
-    const shareText = getShareText();
-    
-    // Try to use Web Share API first
-    if (navigator.share) {
+    if (generatedImageUrl) {
       try {
-        await navigator.share({
-          title: 'PANSGPT Quiz Results',
-          text: shareText,
-          url: window.location.origin
-        });
+        // Convert data URL to blob and create a File object
+        const response = await fetch(generatedImageUrl);
+        const blob = await response.blob();
+        const file = new File([blob], 'pansgpt-quiz-result.png', { type: 'image/png' });
+        
+        // Try to copy the image to clipboard first (works on some browsers)
+        if (navigator.clipboard && navigator.clipboard.write) {
+          try {
+            // Create a ClipboardItem with the image
+            const clipboardItem = new ClipboardItem({
+              'image/png': blob
+            });
+            
+            await navigator.clipboard.write([clipboardItem]);
+            
+            // Open WhatsApp Web - the image should be in clipboard
+            const shareText = encodeURIComponent(getShareText());
+            const whatsappUrl = `https://wa.me/?text=${shareText}`;
+            window.open(whatsappUrl, '_blank');
+            
+            // Show success message
+            alert('Image copied to clipboard! Paste it in WhatsApp (Ctrl+V or Cmd+V)');
+            return;
+            
+          } catch (clipboardError) {
+            console.log('Clipboard API failed, trying Web Share API');
+          }
+        }
+        
+        // Try Web Share API with files (works on mobile)
+        if (navigator.share && navigator.canShare) {
+          const shareData = {
+            title: 'PANSGPT Quiz Results',
+            text: getShareText(),
+            files: [file]
+          };
+          
+          if (navigator.canShare(shareData)) {
+            try {
+              await navigator.share(shareData);
+              return;
+            } catch (error) {
+              console.log('Web Share API failed, trying download method');
+            }
+          }
+        }
+        
+        // Fallback: Download image and provide clear instructions
+        const link = document.createElement('a');
+        link.download = 'pansgpt-quiz-result.png';
+        link.href = generatedImageUrl;
+        link.click();
+        
+        // Open WhatsApp Web
+        const shareText = encodeURIComponent(getShareText());
+        const whatsappUrl = `https://wa.me/?text=${shareText}`;
+        window.open(whatsappUrl, '_blank');
+        
+        // Show clear instructions
+        setTimeout(() => {
+          alert('Image downloaded! To share:\n1. Open WhatsApp Web\n2. Click the attachment button (📎)\n3. Select the downloaded image\n4. Send your message');
+        }, 500);
+        
       } catch (error) {
-        console.log('Web Share API failed, falling back to WhatsApp URL');
-        openWhatsAppShare(shareText);
+        console.error('Error sharing image:', error);
+        
+        // Final fallback
+        const link = document.createElement('a');
+        link.download = `pansgpt-quiz-result-${Date.now()}.png`;
+        link.href = generatedImageUrl;
+        link.click();
+        
+        const shareText = encodeURIComponent(getShareText());
+        const whatsappUrl = `https://wa.me/?text=${shareText}`;
+        window.open(whatsappUrl, '_blank');
       }
-    } else {
-      // Fallback to WhatsApp URL scheme
-      openWhatsAppShare(shareText);
     }
   };
 
@@ -126,66 +200,72 @@ export default function QuizShareCard({ result, onShare }: QuizShareCardProps) {
     window.open(whatsappUrl, '_blank');
   };
 
+  // Card style logic
+  const cardClass = exportMode
+    ? 'bg-gradient-to-br from-green-900 via-black to-gray-900 flex flex-col items-center justify-between'
+    : 'relative bg-gradient-to-br from-green-900 via-black to-gray-900 rounded-2xl text-white shadow-2xl border border-green-500/20 overflow-hidden flex flex-col items-center justify-between';
+  const cardStyle = exportMode
+    ? { width: 1000, height: 1000, aspectRatio: '1/1', margin: 0, padding: 0, borderRadius: 0, boxShadow: 'none' }
+    : {};
+
   return (
     <div className="space-y-4">
       {/* Share Card Preview */}
       <div 
         ref={cardRef}
-        className="relative w-full max-w-sm mx-auto bg-gradient-to-br from-green-900 via-black to-gray-900 rounded-2xl p-8 text-white shadow-2xl border border-green-500/20"
-        style={{ aspectRatio: '9/16' }}
+        className={cardClass}
+        style={cardStyle}
       >
         {/* Background Pattern */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-4 right-4 w-20 h-20 bg-green-500 rounded-full blur-xl"></div>
-          <div className="absolute bottom-4 left-4 w-16 h-16 bg-blue-500 rounded-full blur-xl"></div>
+        <div className="absolute inset-0 opacity-10 pointer-events-none select-none">
+          <div className="absolute top-8 right-8 w-40 h-40 bg-green-500 rounded-full blur-2xl"></div>
+          <div className="absolute bottom-8 left-8 w-32 h-32 bg-blue-500 rounded-full blur-2xl"></div>
         </div>
 
         {/* Header */}
-        <div className="relative z-10 text-center mb-6">
-          <div className="flex items-center justify-center mb-4">
-            <div className="w-24 h-24 relative">
-              <Image
-                src="/uploads/Logo.png"
-                alt="PANSGPT Logo"
-                fill
-                className="object-contain"
-              />
-            </div>
+        <div className="relative z-10 text-center mt-16 mb-8 w-full flex flex-col items-center">
+          <div className="w-40 h-40 mb-4 relative flex items-center justify-center">
+            <Image
+              src="/uploads/Logo.png"
+              alt="PANSGPT Logo"
+              width={160}
+              height={160}
+              className="object-contain"
+            />
           </div>
-          <p className="text-green-300 text-sm">Quiz Results</p>
+          <p className="text-green-300 text-2xl font-semibold">Quiz Results</p>
         </div>
 
         {/* Score Section */}
-        <div className="relative z-10 text-center mb-6">
-          <div className="text-5xl font-bold text-white mb-2">
+        <div className="relative z-10 text-center mb-8 w-full">
+          <div className="text-7xl font-extrabold text-white mb-2">
             {result.score}/{result.maxScore}
           </div>
-          <div className="text-2xl font-bold text-green-400 mb-2">
+          <div className="text-4xl font-bold text-green-400 mb-2">
             {result.percentage.toFixed(1)}%
           </div>
-          <div className="text-lg font-semibold text-green-300">
+          <div className="text-2xl font-semibold text-green-300">
             {getScoreMessage(result.percentage)}
           </div>
         </div>
 
         {/* Quiz Info */}
-        <div className="relative z-10 space-y-3 mb-6">
-          <div className="bg-green-900/30 rounded-lg p-4 border border-green-500/20">
-            <h3 className="text-lg font-semibold text-white mb-1">
+        <div className="relative z-10 w-[80%] mx-auto mb-8">
+          <div className="bg-green-900/30 rounded-xl p-8 border border-green-500/20">
+            <h3 className="text-2xl font-bold text-white mb-2">
               {result.quiz.title}
             </h3>
-            <p className="text-green-300 text-sm">
+            <p className="text-green-300 text-lg">
               {result.quiz.courseCode} - {result.quiz.courseTitle}
             </p>
             {result.quiz.topic && (
-              <p className="text-gray-300 text-sm mt-1">
+              <p className="text-gray-300 text-lg mt-2">
                 Topic: {result.quiz.topic}
               </p>
             )}
           </div>
-
           {/* Time and Date */}
-          <div className="flex justify-between text-sm text-gray-300">
+          <div className="flex justify-between text-lg text-gray-300 mt-4">
             {result.timeTaken && (
               <span>⏱️ {formatTime(result.timeTaken)}</span>
             )}
@@ -194,18 +274,18 @@ export default function QuizShareCard({ result, onShare }: QuizShareCardProps) {
         </div>
 
         {/* Footer */}
-        <div className="relative z-10 text-center mt-auto">
-          <div className="text-xs text-gray-400 mb-2">
+        <div className="relative z-10 text-center mb-12 w-full">
+          <div className="text-lg text-gray-400 mb-2">
             Powered by PANSGPT
           </div>
-          <div className="text-xs text-green-400">
+          <div className="text-lg text-green-400 font-semibold">
             Your AI Study Partner
           </div>
         </div>
 
         {/* Decorative Elements */}
-        <div className="absolute bottom-4 right-4 w-8 h-8 bg-green-500/20 rounded-full"></div>
-        <div className="absolute top-1/2 left-4 w-4 h-4 bg-blue-500/20 rounded-full"></div>
+        <div className="absolute bottom-8 right-8 w-16 h-16 bg-green-500/20 rounded-full"></div>
+        <div className="absolute top-1/2 left-8 w-8 h-8 bg-blue-500/20 rounded-full"></div>
       </div>
 
       {/* Share Buttons */}
@@ -245,7 +325,7 @@ export default function QuizShareCard({ result, onShare }: QuizShareCardProps) {
 
       {/* Share Instructions */}
       <div className="text-center text-sm text-gray-400 mt-4">
-        <p>💡 Tip: Download the image and share it to your WhatsApp status!</p>
+        <p>💡 Tip: The image will be copied to clipboard or downloaded for easy sharing!</p>
       </div>
     </div>
   );

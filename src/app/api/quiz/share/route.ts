@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
+import { existsSync } from 'fs';
 
 export async function POST(req: Request) {
   try {
@@ -15,17 +18,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing required data" }, { status: 400 });
     }
 
-    // For now, we'll return a success response
-    // In a production environment, you would:
-    // 1. Upload the image to a cloud storage service (AWS S3, Cloudinary, etc.)
-    // 2. Store the URL in the database
-    // 3. Return the public URL for sharing
+    // Create uploads directory if it doesn't exist
+    const uploadsDir = join(process.cwd(), 'public', 'uploads', 'shares');
+    if (!existsSync(uploadsDir)) {
+      await mkdir(uploadsDir, { recursive: true });
+    }
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const filename = `quiz-result-${resultId}-${timestamp}.png`;
+    const filePath = join(uploadsDir, filename);
+
+    // Remove data URL prefix and convert to buffer
+    const base64Data = imageData.replace(/^data:image\/png;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // Save the image
+    await writeFile(filePath, buffer);
+
+    // Return the public URL
+    const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/uploads/shares/${filename}`;
 
     return NextResponse.json({
       success: true,
-      message: "Share data received successfully",
-      // In production, this would be the uploaded image URL
-      imageUrl: null
+      message: "Image uploaded successfully",
+      imageUrl: publicUrl
     });
 
   } catch (error) {
