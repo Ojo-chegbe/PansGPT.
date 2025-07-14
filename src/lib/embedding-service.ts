@@ -3,8 +3,8 @@ export const EMBEDDING_SERVICE_CONFIG = {
   // Local development
   local: 'http://localhost:8000',
   
-  // Render hosted service (replace with your actual URL)
-  production: process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || 'https://pansgpt.onrender.com',
+  // Northflank hosted service
+  production: process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || 'https://p01--embedding-model--qq4rx7ycpfhm.code.run',
   
   // Get the appropriate URL based on environment
   getUrl: () => {

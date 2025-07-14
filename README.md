@@ -115,7 +115,7 @@ ASTRA_DB_COLLECTION="your-collection"
 GOOGLE_AI_API_KEY="your-api-key"
 
 # Embedding Service
-NEXT_PUBLIC_EMBEDDING_SERVICE_URL="http://localhost:8000"
+NEXT_PUBLIC_EMBEDDING_SERVICE_URL="https://p01--embedding-model--qq4rx7ycpfhm.code.run"
 ```
 
 ### 4. Database Setup

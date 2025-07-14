@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getClient } from "@/lib/db";
 
 const ASTRA_DB_COLLECTION = process.env.ASTRA_DB_COLLECTION || 'document_chunks';
-const EMBEDDING_SERVICE_URL = process.env.EMBEDDING_SERVICE_URL || 'https://pansgpt.onrender.com';
+const EMBEDDING_SERVICE_URL = process.env.EMBEDDING_SERVICE_URL || 'https://p01--embedding-model--qq4rx7ycpfhm.code.run';
 
 export async function GET(req: Request) {
   return new Response("Hello, world!");

@@ -12,7 +12,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-const EMBEDDING_SERVICE_URL = process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || "https://pansgpt.onrender.com";
+const EMBEDDING_SERVICE_URL = process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || "https://p01--embedding-model--qq4rx7ycpfhm.code.run";
 
 // Utility function to sanitize filenames
 function sanitizeFilename(filename: string): string {
