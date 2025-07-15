@@ -535,38 +535,39 @@ export default function MainPage() {
         throw new Error("Failed to get response");
       }
       
-      const data = await chatResponse.json();
-      const aiMessage = {
-        role: 'model' as MessageRole,
-        content: data.response,
-        hasContext: data.hasContext,
-        createdAt: new Date().toISOString(),
-      };
-      
-      // Generate title from first user message if this is a new conversation
-      let conversationTitle = activeConv?.name || 'New Conversation';
-      if (activeConv?.messages.length === 0) {
-        // Use the first user message as the title (truncate if too long)
-        const titleFromMessage = userMessage.content.trim();
-        conversationTitle = titleFromMessage.length > 50 
-          ? titleFromMessage.substring(0, 50) + '...' 
-          : titleFromMessage;
-      }
-      
-      // Replace loading placeholder with real AI message
-      const updatedMessages = [...(activeConv?.messages || []), userMessage, aiMessage];
+      // Streaming logic
+      if (!chatResponse.body) throw new Error("No response body");
+      const reader = chatResponse.body.getReader();
+      const decoder = new TextDecoder();
+      let aiContent = '';
+      let done = false;
+      // Replace loading placeholder with empty AI message for streaming
+      let updatedMessages = [...(activeConv?.messages || []), userMessage, { role: 'model' as MessageRole, content: '', createdAt: new Date().toISOString() }];
       setMessages(updatedMessages);
       setConversations(prev => prev.map(c =>
         c.id === activeId
-          ? { ...c, messages: updatedMessages, name: conversationTitle }
+          ? { ...c, messages: updatedMessages }
           : c
       ));
-      
+      while (!done) {
+        const { value, done: streamDone } = await reader.read();
+        done = streamDone;
+        aiContent += decoder.decode(value || new Uint8Array(), { stream: !done });
+        // Update the last AI message as we stream
+        updatedMessages = [...(activeConv?.messages || []), userMessage, { role: 'model' as MessageRole, content: aiContent, createdAt: new Date().toISOString() }];
+        setMessages(updatedMessages);
+        setConversations(prev => prev.map(c =>
+          c.id === activeId
+            ? { ...c, messages: updatedMessages }
+            : c
+        ));
+      }
+    
       // Save conversation to database with both messages
       if (session?.user?.id) {
         const payload = {
           id: activeId,
-          title: conversationTitle,
+          title: activeConv?.name || 'New Conversation',
           messages: updatedMessages,
           userId: session.user.id
         };
@@ -580,7 +581,6 @@ export default function MainPage() {
 
         if (saveResponse.ok) {
           const savedConversation = await saveResponse.json();
-          // Update local state with the saved conversation
           const updatedConversation = {
             id: savedConversation.id,
             name: savedConversation.title,
