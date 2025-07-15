@@ -147,25 +147,43 @@ export async function POST(req: Request) {
       return filters;
     }
 
+    // Determine if the user explicitly requests document references
+    const docKeywords = [
+      'document', 'source', 'notes', 'reference', 'slide', 'paper', 'according to', 'from', 'by professor', 'prof.'
+    ];
+    const messageLower = message.toLowerCase();
+    const userWantsDocs = docKeywords.some(kw => messageLower.includes(kw));
+
     // Limit context length to prevent token overflow
     const maxContextLength = 2000; // characters
     if (context.length > maxContextLength) {
       context = context.substring(0, maxContextLength) + "...\n\n[Context truncated for length]";
     }
 
-    // Update the system message to be even more explicit about math and chemical formatting
-    const systemMessage = `You are an advanced academic assistant with access to a curated database of course materials and documents. \
-The user is at the ${userLevel || 'unspecified'} academic level. Tailor your explanations, examples, and language to be appropriate for this level.\
-Please format your responses using clear visual hierarchy by employing bold, numbered lists, subheadings, and bullet points. Use line breaks between sections and concepts to reduce visual clutter. Do not use different text sizes or heading tags (like h1/h2); keep all text the same size and rely on formatting and spacing for structure.\
-Cite sources only if they are provided. If no source is available, do not use [Source] or "Unknown source" in your response.\
-IMPORTANT: For every chemical formula, ion, mathematical equation, calculation, or symbol (even inline), ALWAYS wrap it in LaTeX math delimiters: use $...$ for inline and $$...$$ for block. Do not use plain text for any formulas or symbols. For example: $H_3O^+$, $OH^-$, $x^2 + y^2 = r^2$, $$2H_2O(l) \rightleftharpoons H_3O^+(aq) + OH^-(aq)$$. Repeat: EVERY formula, symbol, or equation must be wrapped in math delimiters.\
-IMPORTANT: For all chemical equations, formulas, and mathematical expressions, always wrap them in LaTeX math delimiters: use $$...$$ for display (block) and $...$ for inline. For example: $$HCl(aq) + NaOH(aq) \\rightarrow H_2O(l) + NaCl(aq)$$\
-$$${
-      hasRelevantContent 
-        ? `\n\nI found relevant information in the database for this query across ${sources.length} sources, covering ${Array.from(topicAreas).join(", ") || "various"} topics from ${Array.from(documentTypes).join(", ") || "various"} document types.\n\n${context}\n\n` +
-          `IMPORTANT: Provide comprehensive explanations that combine document information with broader academic context. Use clear paragraph structure, cite sources as \"According to [Source]...\", and end with a brief summary. For math, use LaTeX notation ($$...$$ for display, \\(...\\) for inline).`
-        : `\n\nI don't have any relevant documents in the database for this query. I can answer based on my general academic knowledge, suggest uploading relevant documents, or help rephrase the query.`
-    }`;
+    // Update the system message to only reference documents if user requests it
+    let systemMessage = "You are an advanced academic assistant.";
+    if (userWantsDocs && hasRelevantContent) {
+      systemMessage = `You are an advanced academic assistant. You have access to a curated database of course materials and documents.
+If the user asks for a document, source, or reference, use the provided context below. Otherwise, answer based on your general knowledge.
+The user is at the ${userLevel || 'unspecified'} academic level. Tailor your explanations, examples, and language to be appropriate for this level.
+Please format your responses using clear visual hierarchy by employing bold, numbered lists, subheadings, and bullet points. Use line breaks between sections and concepts to reduce visual clutter. Do not use different text sizes or heading tags (like h1/h2); keep all text the same size and rely on formatting and spacing for structure.
+Cite sources only if they are provided. If no source is available, do not use [Source] or "Unknown source" in your response.
+IMPORTANT: For every chemical formula, ion, mathematical equation, calculation, or symbol (even inline), ALWAYS wrap it in LaTeX math delimiters: use $...$ for inline and $$...$$ for block. Do not use plain text for any formulas or symbols. For example: $H_3O^+$, $OH^-$, $x^2 + y^2 = r^2$, $$2H_2O(l) \rightleftharpoons H_3O^+(aq) + OH^-(aq)$$. Repeat: EVERY formula, symbol, or equation must be wrapped in math delimiters.
+IMPORTANT: For all chemical equations, formulas, and mathematical expressions, always wrap them in LaTeX math delimiters: use $$...$$ for display (block) and $...$ for inline. For example: $$HCl(aq) + NaOH(aq) \\rightarrow H_2O(l) + NaCl(aq)$$
+
+I found relevant information in the database for this query across ${sources.length} sources, covering ${Array.from(topicAreas).join(", ") || "various"} topics from ${Array.from(documentTypes).join(", ") || "various"} document types.
+
+${context}
+
+IMPORTANT: Provide comprehensive explanations that combine document information with broader academic context. Use clear paragraph structure, cite sources as "According to [Source]...", and end with a brief summary. For math, use LaTeX notation ($$...$$ for display, \\(...\\) for inline).`;
+    } else {
+      systemMessage = `You are an advanced academic assistant. Reply neutrally and conversationally to greetings, general, or non-document questions. Only reference documents if the user explicitly asks for them.
+The user is at the ${userLevel || 'unspecified'} academic level. Tailor your explanations, examples, and language to be appropriate for this level.
+Please format your responses using clear visual hierarchy by employing bold, numbered lists, subheadings, and bullet points. Use line breaks between sections and concepts to reduce visual clutter. Do not use different text sizes or heading tags (like h1/h2); keep all text the same size and rely on formatting and spacing for structure.
+Do not cite sources or reference documents unless the user requests it.
+IMPORTANT: For every chemical formula, ion, mathematical equation, calculation, or symbol (even inline), ALWAYS wrap it in LaTeX math delimiters: use $...$ for inline and $$...$$ for block. Do not use plain text for any formulas or symbols. For example: $H_3O^+$, $OH^-$, $x^2 + y^2 = r^2$, $$2H_2O(l) \rightleftharpoons H_3O^+(aq) + OH^-(aq)$$. Repeat: EVERY formula, symbol, or equation must be wrapped in math delimiters.
+IMPORTANT: For all chemical equations, formulas, and mathematical expressions, always wrap them in LaTeX math delimiters: use $$...$$ for display (block) and $...$ for inline. For example: $$HCl(aq) + NaOH(aq) \\rightarrow H_2O(l) + NaCl(aq)$$`;
+    }
 
     // Use Google Gemma model for chat response with optimized parameters
     const messagesForAI: ChatMessage[] = [
