@@ -1,3 +1,4 @@
+# This file is for Render.com deployment only. For Northflank, use the Dockerfile and follow the dashboard setup instructions in the README.
 services:
   - type: web
     name: embedding-service

@@ -1,6 +1,6 @@
-# Embedding Service for Render Deployment
+# Embedding Service for Render & Northflank Deployment
 
-This service provides embedding generation capabilities using Sentence Transformers, optimized for deployment on Render.
+This service provides embedding generation capabilities using Sentence Transformers, optimized for deployment on Render and Northflank.
 
 ## Features
 
@@ -9,7 +9,7 @@ This service provides embedding generation capabilities using Sentence Transform
 - Health check endpoints
 - CORS support
 - Docker support
-- Render deployment ready
+- Render and Northflank deployment ready
 
 ## Local Development
 
@@ -27,6 +27,28 @@ This service provides embedding generation capabilities using Sentence Transform
    ```bash
    curl http://localhost:8000/health
    ```
+
+## Docker Build & Push
+
+1. **Build the Docker image:**
+   ```bash
+   docker build -t yourdockerhubusername/embedding-service:latest .
+   ```
+2. **Push the image to Docker Hub:**
+   ```bash
+   docker push yourdockerhubusername/embedding-service:latest
+   ```
+
+## Northflank Deployment
+
+1. **Create a new service on Northflank**
+2. **Select 'Deploy from container registry'**
+3. **Choose your Docker image** (e.g., `yourdockerhubusername/embedding-service:latest`)
+4. **Set the port to `8000`**
+5. **Add environment variable:**
+   - `EMBEDDING_MODEL=all-MiniLM-L6-v2`
+6. **Set health check path to `/health`**
+7. **Deploy**
 
 ## Render Deployment
 
@@ -53,7 +75,7 @@ This service provides embedding generation capabilities using Sentence Transform
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `EMBEDDING_MODEL` | Sentence Transformers model name | `all-MiniLM-L6-v2` |
-| `PORT` | Port to run the service on | `8000` (set by Render) |
+| `PORT` | Port to run the service on | `8000` (set by Render/Northflank) |
 
 ## API Endpoints
 
@@ -84,9 +106,8 @@ Content-Type: application/json
 
 ## Performance Considerations
 
-1. **Model Loading:** The model is loaded once when the service starts
-2. **Memory Usage:** Consider upgrading to a paid Render plan for better performance
-3. **Cold Starts:** The service may take time to start initially due to model downloading
+- For production, consider using a paid plan for more resources.
+- The model is loaded at startup and kept in memory for fast inference.
 
 ## Troubleshooting
 

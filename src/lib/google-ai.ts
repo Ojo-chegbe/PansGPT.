@@ -87,3 +87,61 @@ export async function generateChatResponse(
   
   return responseText;
 } 
+
+// Streaming version of chat response
+type StreamCallback = (chunk: string) => void;
+
+export async function streamChatResponse(
+  apiKey: string,
+  messages: ChatMessage[],
+  config: GenerationConfig = {},
+  onChunk: StreamCallback
+): Promise<void> {
+  if (!apiKey) throw new Error('Google AI API key is required');
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: 'gemma-3-27b-it' });
+
+  // Extract system message if present
+  const systemMessage = messages.find(msg => msg.role === 'system');
+  const userMessages = messages.filter(msg => msg.role !== 'system');
+
+  // Ensure first message is from user
+  if (userMessages.length === 0) {
+    throw new Error('At least one user message is required');
+  }
+
+  // Combine system message with first user message if present
+  if (systemMessage) {
+    userMessages[0] = {
+      role: 'user',
+      content: `${systemMessage.content}\n\nUser: ${userMessages[0].content}`
+    };
+  }
+
+  // Convert messages for Google AI
+  const convertedMessages = userMessages.map(msg => ({
+    role: msg.role === 'model' ? 'model' : 'user',
+    parts: [{ text: msg.content }]
+  }));
+
+  const chat = model.startChat({
+    history: convertedMessages.slice(0, -1),
+    generationConfig: {
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 4096,
+      ...config,
+    },
+  });
+
+  // Stream the last message
+  const streamResult = await chat.sendMessageStream(userMessages[userMessages.length - 1].content);
+  for await (const chunk of streamResult.stream) {
+    const text = chunk.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (text) {
+      onChunk(text);
+    }
+  }
+} 

@@ -1,0 +1,17 @@
+# Northflank service definition for automated deployment
+# See: https://docs.northflank.com/guides/deploy-from-docker-image/
+
+services:
+  - name: embedding-service
+    type: service
+    docker:
+      image: yourdockerhubusername/embedding-service:latest  # <-- Replace with your Docker Hub image
+      port: 8000
+    env:
+      - name: EMBEDDING_MODEL
+        value: all-MiniLM-L6-v2
+    healthcheck:
+      path: /health
+      interval: 30s
+      timeout: 10s
+      retries: 3 

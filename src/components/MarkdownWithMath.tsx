@@ -24,8 +24,9 @@ function htmlSubSupToLatex(markdown: string): string {
 const MarkdownWithMath: React.FC<MarkdownWithMathProps> = React.memo(({ content }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Convert HTML sub/sup to LaTeX
-  const processedContent = htmlSubSupToLatex(content);
+  // Convert HTML sub/sup to LaTeX and <br> to newlines
+  let processedContent = htmlSubSupToLatex(content);
+  processedContent = processedContent.replace(/<br\s*\/?>/gi, '\n');
 
   return (
     <div className="markdown-math" ref={containerRef}>

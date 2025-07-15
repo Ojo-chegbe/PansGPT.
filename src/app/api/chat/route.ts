@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-import { generateChatResponse, ChatMessage } from "@/lib/google-ai";
+import { ChatMessage, streamChatResponse } from "@/lib/google-ai";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_AI_API_KEY!;
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://pansgpt.vercel.app';
@@ -21,13 +20,10 @@ interface DocumentChunk {
 
 export async function POST(req: Request) {
   try {
-    const { message, conversationHistory = [] } = await req.json();
+    const { message, conversationHistory = [], userLevel } = await req.json();
 
     if (!message) {
-      return NextResponse.json(
-        { error: "Message is required" },
-        { status: 400 }
-      );
+      return new Response(JSON.stringify({ error: "Message is required" }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
     // Search for relevant document chunks with expanded query context
@@ -64,7 +60,11 @@ export async function POST(req: Request) {
 
         // Process and group chunks
         chunks.forEach((chunk: DocumentChunk) => {
-          const source = chunk.metadata?.source || "Unknown source";
+          const source = chunk.metadata?.source;
+          if (!source) {
+            // Skip chunks with no valid source
+            return;
+          }
           if (!sourceGroups.has(source)) {
             sourceGroups.set(source, { 
               chunks: [],
@@ -153,10 +153,14 @@ export async function POST(req: Request) {
       context = context.substring(0, maxContextLength) + "...\n\n[Context truncated for length]";
     }
 
-    // Update the system message to be more specific about source handling and response style
+    // Update the system message to be even more explicit about math and chemical formatting
     const systemMessage = `You are an advanced academic assistant with access to a curated database of course materials and documents. \
+The user is at the ${userLevel || 'unspecified'} academic level. Tailor your explanations, examples, and language to be appropriate for this level.\
 Please format your responses using clear visual hierarchy by employing bold, numbered lists, subheadings, and bullet points. Use line breaks between sections and concepts to reduce visual clutter. Do not use different text sizes or heading tags (like h1/h2); keep all text the same size and rely on formatting and spacing for structure.\
-$${
+Cite sources only if they are provided. If no source is available, do not use [Source] or "Unknown source" in your response.\
+IMPORTANT: For every chemical formula, ion, mathematical equation, calculation, or symbol (even inline), ALWAYS wrap it in LaTeX math delimiters: use $...$ for inline and $$...$$ for block. Do not use plain text for any formulas or symbols. For example: $H_3O^+$, $OH^-$, $x^2 + y^2 = r^2$, $$2H_2O(l) \rightleftharpoons H_3O^+(aq) + OH^-(aq)$$. Repeat: EVERY formula, symbol, or equation must be wrapped in math delimiters.\
+IMPORTANT: For all chemical equations, formulas, and mathematical expressions, always wrap them in LaTeX math delimiters: use $$...$$ for display (block) and $...$ for inline. For example: $$HCl(aq) + NaOH(aq) \\rightarrow H_2O(l) + NaCl(aq)$$\
+$$${
       hasRelevantContent 
         ? `\n\nI found relevant information in the database for this query across ${sources.length} sources, covering ${Array.from(topicAreas).join(", ") || "various"} topics from ${Array.from(documentTypes).join(", ") || "various"} document types.\n\n${context}\n\n` +
           `IMPORTANT: Provide comprehensive explanations that combine document information with broader academic context. Use clear paragraph structure, cite sources as \"According to [Source]...\", and end with a brief summary. For math, use LaTeX notation ($$...$$ for display, \\(...\\) for inline).`
@@ -170,36 +174,40 @@ $${
       { role: "user", content: message }
     ];
     
-    const aiResponse = await generateChatResponse(GOOGLE_API_KEY, messagesForAI, {
-      maxOutputTokens: 4096,  // Increased significantly for complete responses
-      temperature: 0.3,      // Reduced for more focused responses
-      topK: 40,
-      topP: 0.95,
-    });
-
-    // Log response length for debugging
-    console.log('AI Response length:', aiResponse.length, 'characters');
-    
-    // Check if response seems incomplete (ends abruptly)
-    if (aiResponse.length < 50 || aiResponse.trim().endsWith('...') || aiResponse.trim().endsWith('..')) {
-      console.warn('Response appears incomplete:', aiResponse.substring(aiResponse.length - 100));
-    }
-
-    return NextResponse.json({
-      response: aiResponse,
-      hasContext: hasRelevantContent,
-      sources: sources,
-      metadata: {
-        topicAreas: Array.from(topicAreas),
-        documentTypes: Array.from(documentTypes),
-        sourceCount: sources.length
+    // Streaming response
+    const encoder = new TextEncoder();
+    let firstChunk = true;
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          await streamChatResponse(GOOGLE_API_KEY, messagesForAI, {
+            maxOutputTokens: 4096,
+            temperature: 0.3,
+            topK: 40,
+            topP: 0.95,
+          }, (chunk) => {
+            // Stream as NDJSON for easy client parsing
+            const data = JSON.stringify({ chunk });
+            if (!firstChunk) controller.enqueue(encoder.encode("\n"));
+            controller.enqueue(encoder.encode(data));
+            firstChunk = false;
+          });
+          controller.close();
+        } catch (err) {
+          controller.error(err);
+        }
       }
+    });
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'application/x-ndjson',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Transfer-Encoding': 'chunked',
+      },
     });
   } catch (error) {
     console.error("Error in chat API:", error);
-    return NextResponse.json(
-      { error: "Failed to process message" },
-      { status: 500 }
-    );
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
 }

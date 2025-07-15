@@ -217,6 +217,7 @@ export default function MainPage() {
   const [historyMenuIdx, setHistoryMenuIdx] = useState<number | null>(null);
   const [userLevel, setUserLevel] = useState<string>("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesRef = useRef<ExtendedChatMessage[]>([]);
 
   // Helper to get active conversation
   const activeConv = conversations.find(c => c.id === activeId);
@@ -240,23 +241,56 @@ export default function MainPage() {
     }
   };
 
+  // Streaming chat API helper
+  async function streamChatApi(
+    message: string,
+    conversationHistory: ExtendedChatMessage[],
+    onChunk: (chunk: string) => void,
+    userLevel?: string
+  ) {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, conversationHistory, userLevel }),
+    });
+    if (!response.body) throw new Error('No response body');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.trim()) {
+          try {
+            const { chunk } = JSON.parse(line);
+            onChunk(chunk);
+          } catch {}
+        }
+      }
+    }
+    if (buffer.trim()) {
+      try {
+        const { chunk } = JSON.parse(buffer);
+        onChunk(chunk);
+      } catch {}
+    }
+  }
+
   const handleEditSave = async (idx: number) => {
     if (!editingText.trim()) return;
-
-    // Copy and update the edited message
     const updatedMessages = [...messagesInConv];
     updatedMessages[idx] = {
       ...updatedMessages[idx],
       content: editingText.trim()
     };
-
-    // Remove all messages after the edited one
     const messagesToKeep = updatedMessages.slice(0, idx + 1);
-
-    // Immediately update UI with edited message and loading placeholder for AI
     const aiLoadingMessage = {
       role: 'model' as MessageRole,
-      content: '...', // Loading placeholder
+      content: '', // Streaming will fill this
       hasContext: false,
       createdAt: new Date().toISOString(),
     };
@@ -271,38 +305,72 @@ export default function MainPage() {
     setEditingText("");
     setIsLoading(true);
     try {
-      // Send the edited message to the AI
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          message: editingText.trim(),
-          conversationHistory: messagesToKeep // Provide context for the AI
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to get response");
+      await streamChatApi(
+        editingText.trim(),
+        messagesToKeep,
+        (chunk) => {
+          let text = chunk;
+          // If chunk is a JSON string, extract the 'response' field
+          try {
+            const parsed = typeof chunk === 'string' ? JSON.parse(chunk) : chunk;
+            if (parsed && typeof parsed === 'object' && parsed.response) {
+              text = parsed.response;
+            }
+          } catch {}
+          setMessages(prev => {
+            const updated = [...prev];
+            const lastIdx = updated.length - 1;
+            if (updated[lastIdx]?.role === 'model') {
+              updated[lastIdx] = {
+                ...updated[lastIdx],
+                content: updated[lastIdx].content + text,
+              };
+            }
+            messagesRef.current = updated;
+            return updated;
+          });
+        },
+        userLevel
+      );
+      // Auto-save after streaming completes, using latest messages from ref
+      if (session?.user?.id) {
+        const latestMessages = messagesRef.current;
+        const payload = {
+          id: activeId,
+          title: activeConv?.name || 'Conversation',
+          messages: latestMessages,
+          userId: session.user.id
+        };
+        const saveResponse = await fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          credentials: 'include',
+        });
+        if (saveResponse.ok) {
+          const savedConversation = await saveResponse.json();
+          const updatedConversation = {
+            id: savedConversation.id,
+            name: savedConversation.title,
+            messages: savedConversation.messages.map((msg: any) => ({
+              role: msg.role as MessageRole,
+              content: msg.content,
+              createdAt: new Date(msg.createdAt)
+            }))
+          };
+          setConversations(prev => prev.map(c =>
+            c.id === activeId
+              ? updatedConversation
+              : c
+          ));
+          setMessages(updatedConversation.messages);
+        }
       }
-
-      const data = await response.json();
-      const aiMessage = {
-        role: 'model' as MessageRole,
-        content: data.response,
-        hasContext: data.hasContext,
-        createdAt: new Date().toISOString(),
-      };
-
-      // Replace the loading placeholder with the real AI response
-      const newMessages = [...messagesToKeep, aiMessage];
-      setConversations(prev => prev.map(c =>
-        c.id === activeId
-          ? { ...c, messages: newMessages }
-          : c
-      ));
-      setMessages(newMessages);
     } catch (error) {
-      console.error('Error regenerating response:', error);
+      setMessages(prev => [...prev, {
+        role: 'model',
+        content: 'I apologize, but I encountered an error. Please try again.'
+      }]);
     } finally {
       setIsLoading(false);
     }
@@ -469,6 +537,11 @@ export default function MainPage() {
     }
   }, [messages]);
 
+  // Update messagesRef whenever messages change
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   // Memoize the input handler
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value);
@@ -494,20 +567,15 @@ export default function MainPage() {
   const handleSend = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-
-    // Set loading state immediately for better UX
     setIsLoading(true);
-
     const userMessage: ExtendedChatMessage = {
       role: 'user',
       content: input.trim(),
       createdAt: new Date().toISOString(),
     };
-
-    // Immediately update UI: add user message and loading placeholder for AI
     const aiLoadingMessage: ExtendedChatMessage = {
       role: 'model',
-      content: '...', // Loading placeholder
+      content: '', // Streaming will fill this
       createdAt: new Date().toISOString(),
     };
     const newMessages = [...(activeConv?.messages || []), userMessage, aiLoadingMessage];
@@ -518,67 +586,41 @@ export default function MainPage() {
         : c
     ));
     setInput('');
-
     try {
-      // Get AI response
-      const chatResponse = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          message: userMessage.content,
-          conversationHistory: [...(activeConv?.messages || []), userMessage],
-          level: userLevel
-        }),
-      });
-      
-      if (!chatResponse.ok) {
-        throw new Error("Failed to get response");
-      }
-      
-      // Streaming logic
-      if (!chatResponse.body) throw new Error("No response body");
-      const reader = chatResponse.body.getReader();
-      const decoder = new TextDecoder();
-      let aiContent = '';
-      let done = false;
-      // Replace loading placeholder with empty AI message for streaming
-      let updatedMessages = [...(activeConv?.messages || []), userMessage, { role: 'model' as MessageRole, content: '', createdAt: new Date().toISOString() }];
-      setMessages(updatedMessages);
-      setConversations(prev => prev.map(c =>
-        c.id === activeId
-          ? { ...c, messages: updatedMessages }
-          : c
-      ));
-      while (!done) {
-        const { value, done: streamDone } = await reader.read();
-        done = streamDone;
-        aiContent += decoder.decode(value || new Uint8Array(), { stream: !done });
-        // Update the last AI message as we stream
-        updatedMessages = [...(activeConv?.messages || []), userMessage, { role: 'model' as MessageRole, content: aiContent, createdAt: new Date().toISOString() }];
-        setMessages(updatedMessages);
-        setConversations(prev => prev.map(c =>
-          c.id === activeId
-            ? { ...c, messages: updatedMessages }
-            : c
-        ));
-      }
-    
-      // Save conversation to database with both messages
+      await streamChatApi(
+        userMessage.content,
+        [...(activeConv?.messages || []), userMessage],
+        (chunk) => {
+          setMessages(prev => {
+            const updated = [...prev];
+            const lastIdx = updated.length - 1;
+            if (updated[lastIdx]?.role === 'model') {
+              updated[lastIdx] = {
+                ...updated[lastIdx],
+                content: updated[lastIdx].content + chunk,
+              };
+            }
+            messagesRef.current = updated;
+            return updated;
+          });
+        },
+        userLevel
+      );
+      // Auto-save after streaming completes, using latest messages from ref
       if (session?.user?.id) {
+        const latestMessages = messagesRef.current;
         const payload = {
           id: activeId,
-          title: activeConv?.name || 'New Conversation',
-          messages: updatedMessages,
+          title: activeConv?.name || 'Conversation',
+          messages: latestMessages,
           userId: session.user.id
         };
-
         const saveResponse = await fetch("/api/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
           credentials: 'include',
         });
-
         if (saveResponse.ok) {
           const savedConversation = await saveResponse.json();
           const updatedConversation = {
@@ -596,33 +638,17 @@ export default function MainPage() {
               : c
           ));
           setMessages(updatedConversation.messages);
-          if (savedConversation.id !== activeId) {
-            setActiveId(savedConversation.id);
-          }
-        } else {
-          const errorText = await saveResponse.text();
-          console.error("Failed to save conversation to database:", saveResponse.status, errorText);
         }
-      } else {
-        console.error("No session or user ID available for saving conversation");
       }
     } catch (error) {
-      console.error('Error in chat:', error);
-      const errorMessage = {
-        role: 'model' as MessageRole,
-        content: 'I apologize, but I encountered an error. Please try again.',
-        createdAt: new Date().toISOString(),
-      };
-      setMessages((prev: ExtendedChatMessage[]) => [...prev.slice(0, -1), errorMessage]);
-      setConversations(prev => prev.map(c =>
-        c.id === activeId
-          ? { ...c, messages: [...(activeConv?.messages || []), userMessage, errorMessage] }
-          : c
-      ));
+      setMessages(prev => [...prev, {
+        role: 'model',
+        content: 'I apologize, but I encountered an error. Please try again.'
+      }]);
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, activeConv, activeId, session?.user?.id, userLevel]);
+  }, [input, isLoading, activeConv, activeId, session?.user?.id, messages, userLevel]);
 
   // Chat history actions
   function handleSelectConv(id: string) {
@@ -847,7 +873,7 @@ export default function MainPage() {
                           {historyMenuIdx === idx && (
                             <div className="absolute right-0 mt-2 w-32 bg-[#232625] rounded-lg shadow-lg py-2 z-50">
                               <button className="block w-full text-left px-4 py-2 hover:bg-gray-700 text-sm" onClick={e => { e.stopPropagation(); handleRenameConv(idx); }}>Rename</button>
-                              <button className="block w-full text-left px-4 py-2 hover:bg-gray-700 text-sm" onClick={e => { e.stopPropagation(); handleDeleteConv(idx); }}>Delete</button>
+                              <button className="block w-full text-left px-4 py-2 hover:bg-gray-700 text-sm" onClick={e => { e.stopPropagation(); handleDeleteConv(idx); }}>Delete conversation</button>
                             </div>
                           )}
                         </div>
@@ -960,7 +986,7 @@ export default function MainPage() {
               </button>
               {showMenu && (
                 <div className="absolute right-0 mt-2 w-32 bg-[#232625] rounded-lg shadow-lg py-2 z-50">
-                  <button className="block w-full text-left px-4 py-2 hover:bg-gray-700 text-sm" onClick={handleDeleteActiveConv}>Delete</button>
+                  <button className="block w-full text-left px-4 py-2 hover:bg-gray-700 text-sm" onClick={handleDeleteActiveConv}>Delete conversation</button>
                 </div>
               )}
             </div>
