@@ -1,7 +1,8 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
+import { getDeviceId } from "../../lib/device-id";
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState("");
@@ -15,6 +16,12 @@ export default function SignupPage() {
   const [passwordError, setPasswordError] = useState("");
   const [confirmPasswordError, setConfirmPasswordError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [clientDeviceId, setClientDeviceId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const deviceId = getDeviceId();
+    setClientDeviceId(deviceId);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -71,6 +78,8 @@ export default function SignupPage() {
       const result = await signIn("credentials", {
         email,
         password,
+        clientDeviceId,
+        userAgent: navigator.userAgent,
         redirect: false,
       });
 
