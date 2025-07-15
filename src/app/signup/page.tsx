@@ -55,6 +55,13 @@ export default function SignupPage() {
     }
     if (!valid) return;
 
+    // Ensure clientDeviceId is available
+    let deviceId = clientDeviceId;
+    if (!deviceId) {
+      deviceId = getDeviceId();
+      setClientDeviceId(deviceId);
+    }
+
     setIsLoading(true);
     try {
       // Create user
@@ -71,14 +78,17 @@ export default function SignupPage() {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.message || "Something went wrong");
+        // Show backend error if available, otherwise generic
+        setError(data.error || data.message || "Something went wrong");
+        setIsLoading(false);
+        return;
       }
 
       // Sign in the user
       const result = await signIn("credentials", {
         email,
         password,
-        clientDeviceId,
+        clientDeviceId: deviceId,
         userAgent: navigator.userAgent,
         redirect: false,
       });
@@ -86,7 +96,9 @@ export default function SignupPage() {
       console.log("SignIn result:", result);
 
       if (result?.error) {
-        throw new Error(result.error);
+        setError(result.error);
+        setIsLoading(false);
+        return;
       }
 
       // Use window.location for a full page navigation
