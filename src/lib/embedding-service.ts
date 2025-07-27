@@ -1,16 +1,11 @@
 // Embedding service configuration
 export const EMBEDDING_SERVICE_CONFIG = {
-  // Local development
-  local: 'http://localhost:8000',
-  
-  // Northflank hosted service
+  // Production hosted service (use this for both dev and prod)
   production: process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || 'https://p01--embedding-model--qq4rx7ycpfhm.code.run',
   
   // Get the appropriate URL based on environment
   getUrl: () => {
-    if (process.env.NODE_ENV === 'development') {
-      return EMBEDDING_SERVICE_CONFIG.local;
-    }
+    // Always use production URL since local service isn't running
     return EMBEDDING_SERVICE_CONFIG.production;
   }
 };

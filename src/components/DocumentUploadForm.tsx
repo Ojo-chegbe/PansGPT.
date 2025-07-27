@@ -103,35 +103,11 @@ export default function DocumentUploadForm() {
 
       if (!uploadResponse.ok || !fileKey) {
         throw new Error('File upload failed');
-        }
-
-      // Then process the document with metadata
-      const processResponse = await fetch('/api/process-document', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileKey,
-          documentId, // Pass the documentId to link chunks
-          metadata: {
-            professorName: formData.professorName,
-            title: formData.title,
-            courseCode: formData.courseCode,
-            courseTitle: formData.courseTitle,
-            topic: formData.topic,
-            course: `${formData.courseCode} - ${formData.courseTitle}`,
-            level: formData.level || ''
-          }
-        }),
-      });
-
-      const processData = await processResponse.json();
-
-      if (!processResponse.ok) {
-        throw new Error(processData.error || 'Document processing failed');
       }
 
+      // Document processing is already handled by the upload endpoint
+      // No need to call process-document separately
+      
       // Refresh the current page instead of navigation
       router.refresh();
       

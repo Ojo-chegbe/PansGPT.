@@ -114,7 +114,7 @@ export async function POST(request: Request) {
         document_id: documentId,
         chunk_index: i,
         chunk_text: extractedTexts[i],
-        embedding: embedding,
+        $vector: embedding,
         created_at: new Date().toISOString(),
         metadata: {
           ...metadata,

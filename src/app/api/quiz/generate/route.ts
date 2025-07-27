@@ -64,9 +64,10 @@ export async function POST(req: Request) {
       body: JSON.stringify({ 
         query: searchQuery,
         filters: {
-          min_relevance: 0.6,
-          max_chunks: 10,
-          course_filters: { courseCode, level }
+          courseCode,
+          level,
+          topic,
+          max_chunks: 10
         }
       }),
     });

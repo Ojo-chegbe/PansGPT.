@@ -34,12 +34,13 @@ export async function POST(request: Request) {
     }
     
     if (filters.topic) {
-      filterConditions["metadata.topic"] = filters.topic;
+      filterConditions["metadata.topic"] = filters.topic.trim();
     }
-
-    // Add level filter if provided
+    if (filters.courseCode) {
+      filterConditions["metadata.courseCode"] = filters.courseCode.trim();
+    }
     if (filters.level) {
-      filterConditions["metadata.level"] = filters.level;
+      filterConditions["metadata.level"] = filters.level.trim();
     }
 
     let results: any[] = [];
@@ -64,7 +65,19 @@ export async function POST(request: Request) {
 
         console.log('Performing vector search with filters:', filterConditions);
         
-        // Perform vector similarity search with metadata filters using correct syntax
+        // Debug: Let's see what's actually in the database
+        const sampleDocs = await collection.find({}).limit(3).toArray();
+        console.log('Sample documents in database:', sampleDocs.map(doc => ({
+          id: doc._id,
+          topic: doc.metadata?.topic,
+          courseCode: doc.metadata?.courseCode,
+          level: doc.metadata?.level,
+          professorName: doc.metadata?.professorName,
+          hasMetadata: !!doc.metadata,
+          metadataKeys: doc.metadata ? Object.keys(doc.metadata) : []
+        })));
+        
+        // Try vector search with filters first
         results = await collection.find(
           filterConditions,
           {
@@ -75,6 +88,33 @@ export async function POST(request: Request) {
             includeSimilarity: true
           }
         ).toArray();
+
+        // If no results with filters, try without filters
+        if (results.length === 0) {
+          console.log('No results with filters, trying without filters...');
+          results = await collection.find(
+            {},
+            {
+              sort: {
+                $vector: queryEmbedding
+              },
+              limit: filters.max_chunks || 5,
+              includeSimilarity: true
+            }
+          ).toArray();
+          
+          // Filter results in memory if we got any
+          if (results.length > 0) {
+            console.log(`Found ${results.length} results without filters, filtering in memory...`);
+            results = results.filter(doc => {
+              const matchesTopic = !filters.topic || doc.metadata?.topic === filters.topic;
+              const matchesCourseCode = !filters.courseCode || doc.metadata?.courseCode === filters.courseCode;
+              const matchesLevel = !filters.level || doc.metadata?.level === filters.level;
+              return matchesTopic && matchesCourseCode && matchesLevel;
+            });
+            console.log(`After in-memory filtering: ${results.length} results`);
+          }
+        }
 
         console.log('Vector search results:', {
           count: results.length,

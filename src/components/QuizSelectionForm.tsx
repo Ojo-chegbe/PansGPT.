@@ -4,6 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
+// Add import for combobox
+import { Combobox } from '@headlessui/react';
+
 interface QuizFormData {
   courseCode: string;
   courseTitle: string;
@@ -38,6 +41,8 @@ export default function QuizSelectionForm() {
     difficulty: 'medium',
     timeLimit: undefined
   });
+  const [topicOptions, setTopicOptions] = useState<string[]>([]);
+  const [filteredTopics, setFilteredTopics] = useState<string[]>([]);
 
   useEffect(() => {
     async function fetchUserLevel() {
@@ -68,6 +73,33 @@ export default function QuizSelectionForm() {
     }
     fetchAvailableCourses();
   }, []);
+
+  // Fetch topics for suggestions
+  useEffect(() => {
+    async function fetchTopics() {
+      try {
+        const res = await fetch('/api/documents/topics');
+        if (res.ok) {
+          const data = await res.json();
+          setTopicOptions(data.topics || []);
+        }
+      } catch (err) {
+        // Ignore errors for now
+      }
+    }
+    fetchTopics();
+  }, []);
+
+  // Filter topics as user types
+  useEffect(() => {
+    if (!formData.topic) {
+      setFilteredTopics(topicOptions);
+    } else {
+      setFilteredTopics(
+        topicOptions.filter(t => t.toLowerCase().includes(formData.topic.toLowerCase()))
+      );
+    }
+  }, [formData.topic, topicOptions]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -183,20 +215,39 @@ export default function QuizSelectionForm() {
           </select>
         </div>
 
-        {/* Topic */}
+        {/* Topic - Combobox */}
         <div>
           <label htmlFor="topic" className="block text-sm font-medium text-white">
             Topic (Optional)
           </label>
-          <input
-            type="text"
-            id="topic"
-            name="topic"
-            value={formData.topic}
-            onChange={handleInputChange}
-            className="mt-1 block w-full rounded-md border-gray-700 bg-[#232625] text-white shadow-sm focus:border-green-500 focus:ring-green-500"
-            placeholder="e.g., Drug Metabolism, Titration, etc."
-          />
+          <Combobox value={formData.topic} onChange={value => setFormData(prev => ({ ...prev, topic: value || "" }))}>
+            <div className="relative mt-1">
+              <Combobox.Input
+                className="block w-full rounded-md border-gray-700 bg-[#232625] text-white shadow-sm focus:border-green-500 focus:ring-green-500"
+                displayValue={(topic: string) => topic}
+                onChange={e => setFormData(prev => ({ ...prev, topic: e.target.value || "" }))}
+                placeholder="e.g., Drug Metabolism, Titration, etc."
+                id="topic"
+                name="topic"
+                autoComplete="off"
+              />
+              {filteredTopics.length > 0 && (
+                <Combobox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-[#232625] py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
+                  {filteredTopics.map((topic) => (
+                    <Combobox.Option
+                      key={topic}
+                      value={topic}
+                      className={({ active }) =>
+                        `relative cursor-pointer select-none py-2 pl-3 pr-9 ${active ? 'bg-green-600 text-white' : 'text-gray-200'}`
+                      }
+                    >
+                      {topic}
+                    </Combobox.Option>
+                  ))}
+                </Combobox.Options>
+              )}
+            </div>
+          </Combobox>
           <p className="mt-1 text-sm text-gray-400">
             Leave blank for a general quiz on the course
           </p>

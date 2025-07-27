@@ -153,7 +153,7 @@ export async function POST(request: Request) {
           _id: chunkId,
           document_id: documentId,
           chunk_text: chunk.pageContent,
-          embedding: embedding,
+          $vector: embedding,
           metadata: chunkMetadata
         });
       });
