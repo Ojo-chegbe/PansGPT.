@@ -67,7 +67,7 @@ export async function POST(req: Request) {
           courseCode,
           level,
           topic,
-          max_chunks: 10
+          max_chunks: 30
         }
       }),
     });
@@ -77,7 +77,30 @@ export async function POST(req: Request) {
     if (searchResponse.ok) {
       const { chunks } = await searchResponse.json();
       if (chunks && chunks.length > 0) {
-        context = chunks
+        // Group chunks by document_id and spread out by chunkIndex
+        const chunksByDoc: { [key: string]: any[] } = {};
+        (chunks as any[]).forEach((chunk: any) => {
+          const docId = chunk.metadata?.document_id || 'unknown';
+          if (!chunksByDoc[docId]) chunksByDoc[docId] = [];
+          chunksByDoc[docId].push(chunk);
+        });
+        let selectedChunks: any[] = [];
+        (Object.values(chunksByDoc) as any[]).forEach((docChunks: any[]) => {
+          docChunks.sort((a: any, b: any) => (a.metadata?.chunkIndex || 0) - (b.metadata?.chunkIndex || 0));
+          const n = docChunks.length;
+          if (n > 0) selectedChunks.push(docChunks[0]); // first
+          if (n > 2) selectedChunks.push(docChunks[Math.floor(n/2)]); // middle
+          if (n > 1) selectedChunks.push(docChunks[n-1]); // last
+        });
+        // If more than 10, randomly sample 10
+        if (selectedChunks.length > 10) {
+          for (let i = selectedChunks.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [selectedChunks[i], selectedChunks[j]] = [selectedChunks[j], selectedChunks[i]];
+          }
+          selectedChunks = selectedChunks.slice(0, 10);
+        }
+        context = selectedChunks
           .map((chunk: any) => chunk.chunk_text)
           .join("\n\n");
       }
@@ -106,7 +129,7 @@ export async function POST(req: Request) {
       ];
       const aiResponse = await generateChatResponse(GOOGLE_API_KEY, messagesForAI, {
         maxOutputTokens: 3072,
-        temperature: 0.3,
+        temperature: 0.7, // Increased for more variation
         topK: 40,
         topP: 0.95,
       });
