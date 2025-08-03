@@ -332,20 +332,24 @@ export default function MainPage() {
         },
         userLevel
       );
-      // Auto-save after streaming completes, using latest messages from ref
+      // Auto-save after streaming completes, using current messages state
       if (session?.user?.id) {
-        const latestMessages = messagesRef.current;
+        // Small delay to ensure messages state is fully updated
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Get the current messages from state instead of ref
+        const currentMessages = messages;
         const payload = {
           id: activeId,
           title: activeConv?.name || 'Conversation',
-          messages: latestMessages,
+          messages: currentMessages,
           userId: session.user.id
         };
         
         console.log('Saving conversation:', {
           activeId,
           hasActiveConv: !!activeConv,
-          messageCount: latestMessages.length,
+          messageCount: currentMessages.length,
           payload
         });
         
@@ -573,6 +577,10 @@ export default function MainPage() {
   // Update messagesRef whenever messages change
   useEffect(() => {
     messagesRef.current = messages;
+    console.log('Messages updated:', {
+      messageCount: messages.length,
+      lastMessage: messages[messages.length - 1]?.content?.substring(0, 50) + '...'
+    });
   }, [messages]);
 
   // Memoize the input handler
@@ -639,20 +647,24 @@ export default function MainPage() {
         },
         userLevel
       );
-      // Auto-save after streaming completes, using latest messages from ref
+      // Auto-save after streaming completes, using current messages state
       if (session?.user?.id) {
-        const latestMessages = messagesRef.current;
+        // Small delay to ensure messages state is fully updated
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Get the current messages from state instead of ref
+        const currentMessages = messages;
         const payload = {
           id: activeId,
           title: activeConv?.name || 'Conversation',
-          messages: latestMessages,
+          messages: currentMessages,
           userId: session.user.id
         };
         
         console.log('Saving conversation:', {
           activeId,
           hasActiveConv: !!activeConv,
-          messageCount: latestMessages.length,
+          messageCount: currentMessages.length,
           payload
         });
         
