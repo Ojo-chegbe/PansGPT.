@@ -282,7 +282,12 @@ export default function MainPage() {
 
   const handleEditSave = async (idx: number) => {
     if (!editingText.trim()) return;
-    const updatedMessages = [...messagesInConv];
+    
+    // Get the current active conversation to avoid stale closure
+    const currentActiveConv = conversations.find(c => c.id === activeId);
+    if (!currentActiveConv) return;
+    
+    const updatedMessages = [...currentActiveConv.messages];
     updatedMessages[idx] = {
       ...updatedMessages[idx],
       content: editingText.trim()
@@ -332,24 +337,20 @@ export default function MainPage() {
         },
         userLevel
       );
-      // Auto-save after streaming completes, using current messages state
+      // Auto-save after streaming completes, using latest messages from ref
       if (session?.user?.id) {
-        // Small delay to ensure messages state is fully updated
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Get the current messages from state instead of ref
-        const currentMessages = messages;
+        const latestMessages = messagesRef.current;
         const payload = {
           id: activeId,
-          title: activeConv?.name || 'Conversation',
-          messages: currentMessages,
+          title: currentActiveConv.name || 'Conversation',
+          messages: latestMessages,
           userId: session.user.id
         };
         
-        console.log('Saving conversation:', {
+        console.log('Saving edited conversation:', {
           activeId,
-          hasActiveConv: !!activeConv,
-          messageCount: currentMessages.length,
+          hasActiveConv: !!currentActiveConv,
+          messageCount: latestMessages.length,
           payload
         });
         
@@ -362,7 +363,7 @@ export default function MainPage() {
         
         if (saveResponse.ok) {
           const savedConversation = await saveResponse.json();
-          console.log('Conversation saved successfully:', {
+          console.log('Edited conversation saved successfully:', {
             conversationId: savedConversation.id,
             messageCount: savedConversation.messages?.length || 0
           });
@@ -398,12 +399,13 @@ export default function MainPage() {
           
           setMessages(updatedConversation.messages);
         } else {
-          console.error('Failed to save conversation:', saveResponse.status, saveResponse.statusText);
+          console.error('Failed to save edited conversation:', saveResponse.status, saveResponse.statusText);
           const errorText = await saveResponse.text();
           console.error('Error details:', errorText);
         }
       }
     } catch (error) {
+      console.error('Error in handleEditSave:', error);
       setMessages(prev => [...prev, {
         role: 'model',
         content: 'I apologize, but I encountered an error. Please try again.'
@@ -479,6 +481,16 @@ export default function MainPage() {
           });
           const data = await response.json();
           
+          console.log('Loaded conversations from database:', {
+            hasData: !!data,
+            conversationsCount: data.conversations?.length || 0,
+            firstConversation: data.conversations?.[0] ? {
+              id: data.conversations[0].id,
+              title: data.conversations[0].title,
+              messageCount: data.conversations[0].messages?.length || 0
+            } : null
+          });
+          
           if (data.conversations && data.conversations.length > 0) {
             const formattedConversations = data.conversations.map((conv: any) => ({
               id: conv.id,
@@ -492,8 +504,15 @@ export default function MainPage() {
             setConversations(formattedConversations);
             setActiveId(formattedConversations[0].id);
             setMessages(formattedConversations[0].messages);
+            
+            console.log('Set conversations in state:', {
+              conversationsCount: formattedConversations.length,
+              activeId: formattedConversations[0].id,
+              firstConversationMessages: formattedConversations[0].messages.length
+            });
           } else {
             // Create a new conversation in the database if none exist
+            console.log('No conversations found, creating new one');
             await createNewConversation();
           }
         } catch (err) {
@@ -577,10 +596,6 @@ export default function MainPage() {
   // Update messagesRef whenever messages change
   useEffect(() => {
     messagesRef.current = messages;
-    console.log('Messages updated:', {
-      messageCount: messages.length,
-      lastMessage: messages[messages.length - 1]?.content?.substring(0, 50) + '...'
-    });
   }, [messages]);
 
   // Memoize the input handler
@@ -647,24 +662,20 @@ export default function MainPage() {
         },
         userLevel
       );
-      // Auto-save after streaming completes, using current messages state
+      // Auto-save after streaming completes, using latest messages from ref
       if (session?.user?.id) {
-        // Small delay to ensure messages state is fully updated
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Get the current messages from state instead of ref
-        const currentMessages = messages;
+        const latestMessages = messagesRef.current;
         const payload = {
           id: activeId,
           title: activeConv?.name || 'Conversation',
-          messages: currentMessages,
+          messages: latestMessages,
           userId: session.user.id
         };
         
         console.log('Saving conversation:', {
           activeId,
           hasActiveConv: !!activeConv,
-          messageCount: currentMessages.length,
+          messageCount: latestMessages.length,
           payload
         });
         

@@ -37,6 +37,22 @@ export async function GET(request: Request) {
       take: limit // Limit total conversations
     });
 
+    console.log('Retrieved conversations from database:', {
+      userId,
+      conversationsCount: conversations.length,
+      conversations: conversations.map(conv => ({
+        id: conv.id,
+        title: conv.title,
+        messageCount: conv.messages.length,
+        messages: conv.messages.map(msg => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content?.substring(0, 50) + '...',
+          createdAt: msg.createdAt
+        }))
+      }))
+    });
+
     return NextResponse.json({ conversations }, {
       headers: {
         'Cache-Control': 'private, max-age=30, stale-while-revalidate=60'
