@@ -90,19 +90,39 @@ export async function POST(req: Request) {
             correctArr = correctAns ? [correctAns] : [];
           }
         }
+        
+        // Clean up correct answers - remove any (TRUE) or (FALSE) labels
+        correctArr = correctArr.map(answer => 
+          answer.replace(/\s*\(TRUE\)\s*$/i, '').replace(/\s*\(FALSE\)\s*$/i, '').trim()
+        );
+        
         // User answer as array
         const userArr = Array.isArray(userAns) ? userAns : typeof userAns === 'string' && userAns ? [userAns] : [];
+        
+        // Clean up user answers - remove any (TRUE) or (FALSE) labels
+        const cleanedUserArr = userArr.map(answer => 
+          answer.replace(/\s*\(TRUE\)\s*$/i, '').replace(/\s*\(FALSE\)\s*$/i, '').trim()
+        );
+        
         // Must select exactly 3, all must match, no extras
-        isCorrect = userArr.length === 3 &&
+        isCorrect = cleanedUserArr.length === 3 &&
           correctArr.length === 3 &&
-          userArr.every(ans => correctArr.includes(ans)) &&
-          correctArr.every(ans => userArr.includes(ans));
+          cleanedUserArr.every(ans => correctArr.includes(ans)) &&
+          correctArr.every(ans => cleanedUserArr.includes(ans));
         earnedPoints = isCorrect ? question.points : 0;
-        userAns = userArr;
+        userAns = cleanedUserArr;
         correctAns = correctArr;
       } else if (question.questionType === 'OBJECTIVE' || question.questionType === 'TRUE_FALSE') {
-        isCorrect = userAns === correctAns;
+        // Clean up answers - remove any (TRUE) or (FALSE) labels
+        const cleanedUserAns = typeof userAns === 'string' ? 
+          userAns.replace(/\s*\(TRUE\)\s*$/i, '').replace(/\s*\(FALSE\)\s*$/i, '').trim() : userAns;
+        const cleanedCorrectAns = typeof correctAns === 'string' ? 
+          correctAns.replace(/\s*\(TRUE\)\s*$/i, '').replace(/\s*\(FALSE\)\s*$/i, '').trim() : correctAns;
+        
+        isCorrect = cleanedUserAns === cleanedCorrectAns;
         earnedPoints = isCorrect ? question.points : 0;
+        userAns = cleanedUserAns;
+        correctAns = cleanedCorrectAns;
       } else if (question.questionType === 'SHORT_ANSWER') {
         // AI grading handled below
         isCorrect = false;

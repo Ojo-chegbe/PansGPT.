@@ -1,8 +1,48 @@
 import { NextResponse } from "next/server";
 import { getClient } from "@/lib/db";
+import { generateQueryVariations } from "@/lib/quiz-diversity";
 
 const ASTRA_DB_COLLECTION = process.env.ASTRA_DB_COLLECTION || 'document_chunks';
 const EMBEDDING_SERVICE_URL = process.env.EMBEDDING_SERVICE_URL || 'https://p01--embedding-model--qq4rx7ycpfhm.code.run';
+
+// Query expansion function to generate diverse search queries
+function expandQuery(baseQuery: string, topic?: string, courseCode?: string): string[] {
+  return generateQueryVariations(baseQuery, topic, courseCode);
+}
+
+// MMR (Maximal Marginal Relevance) function for diversity
+function mmrDiversify(results: any[], queryEmbedding: number[], lambda: number = 0.5, maxResults: number = 10): any[] {
+  if (results.length <= maxResults) return results;
+  
+  const selected: any[] = [];
+  const remaining = [...results];
+  
+  // Start with the most relevant result
+  selected.push(remaining.shift());
+  
+  while (selected.length < maxResults && remaining.length > 0) {
+    let bestIdx = 0;
+    let bestScore = -1;
+    
+    for (let i = 0; i < remaining.length; i++) {
+      const relevance = remaining[i].$similarity || 0.5;
+      const diversity = Math.min(...selected.map(s => 
+        1 - (s.$similarity || 0.5) // Simple diversity measure
+      ));
+      
+      const mmrScore = lambda * relevance + (1 - lambda) * diversity;
+      
+      if (mmrScore > bestScore) {
+        bestScore = mmrScore;
+        bestIdx = i;
+      }
+    }
+    
+    selected.push(remaining.splice(bestIdx, 1)[0]);
+  }
+  
+  return selected;
+}
 
 export async function GET() {
   return new Response("Hello, world!");
@@ -43,15 +83,23 @@ export async function POST(request: Request) {
       filterConditions["metadata.level"] = filters.level.trim();
     }
 
-    let results: any[] = [];
+    console.log('Search filter conditions:', filterConditions);
+
+    let allResults: any[] = [];
 
     // Try vector search first if embedding service is available
     try {
       console.log('Getting embedding from service...');
+      
+      // Generate diverse queries for better coverage
+      const expandedQueries = expandQuery(query, filters.topic, filters.courseCode);
+      console.log('Expanded queries:', expandedQueries);
+      
+      // Get embeddings for all expanded queries
       const embedResponse = await fetch(`${EMBEDDING_SERVICE_URL}/embed`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texts: [query] }),
+        body: JSON.stringify({ texts: expandedQueries }),
       });
 
       if (embedResponse.ok) {
@@ -61,70 +109,105 @@ export async function POST(request: Request) {
           embeddingSize: embedData.embeddings?.[0]?.length 
         });
 
-        const queryEmbedding = embedData.embeddings[0];
-
-        console.log('Performing vector search with filters:', filterConditions);
-        
-        // Debug: Let's see what's actually in the database
-        const sampleDocs = await collection.find({}).limit(3).toArray();
-        console.log('Sample documents in database:', sampleDocs.map(doc => ({
-          id: doc._id,
-          topic: doc.metadata?.topic,
-          courseCode: doc.metadata?.courseCode,
-          level: doc.metadata?.level,
-          professorName: doc.metadata?.professorName,
-          hasMetadata: !!doc.metadata,
-          metadataKeys: doc.metadata ? Object.keys(doc.metadata) : []
-        })));
-        
-        // Try vector search with filters first
-        results = await collection.find(
-          filterConditions,
-          {
-            sort: {
-              $vector: queryEmbedding
-            },
-            limit: filters.max_chunks || 5,
-            includeSimilarity: true
-          }
-        ).toArray();
-
-        // If no results with filters, try without filters
-        if (results.length === 0) {
-          console.log('No results with filters, trying without filters...');
-          results = await collection.find(
-            {},
+        // Search with each expanded query
+        for (let i = 0; i < embedData.embeddings.length; i++) {
+          const queryEmbedding = embedData.embeddings[i];
+          const currentQuery = expandedQueries[i];
+          
+          console.log(`Searching with query ${i + 1}: "${currentQuery}"`);
+          
+          // Try vector search with filters first
+          let queryResults = await collection.find(
+            filterConditions,
             {
               sort: {
                 $vector: queryEmbedding
               },
-              limit: filters.max_chunks || 5,
+              limit: Math.ceil((filters.max_chunks || 10) / expandedQueries.length),
               includeSimilarity: true
             }
           ).toArray();
+
+          // If no results with filters, try without filters
+          if (queryResults.length === 0) {
+            console.log(`No results with filters for query "${currentQuery}", trying without filters...`);
+            queryResults = await collection.find(
+              {},
+              {
+                sort: {
+                  $vector: queryEmbedding
+                },
+                limit: Math.ceil((filters.max_chunks || 10) / expandedQueries.length),
+                includeSimilarity: true
+              }
+            ).toArray();
+            
+            // Filter results in memory if we got any
+            if (queryResults.length > 0) {
+              console.log(`Found ${queryResults.length} results without filters for query "${currentQuery}", filtering in memory...`);
+              queryResults = queryResults.filter(doc => {
+                const matchesTopic = !filters.topic || doc.metadata?.topic === filters.topic;
+                const matchesCourseCode = !filters.courseCode || doc.metadata?.courseCode === filters.courseCode;
+                const matchesLevel = !filters.level || doc.metadata?.level === filters.level;
+                const matchesAuthor = !filters.author || 
+                  doc.metadata?.professorName?.toLowerCase().includes(filters.author.toLowerCase()) ||
+                  doc.metadata?.author?.toLowerCase().includes(filters.author.toLowerCase());
+                return matchesTopic && matchesCourseCode && matchesLevel && matchesAuthor;
+              });
+              console.log(`After in-memory filtering: ${queryResults.length} results for query "${currentQuery}"`);
+            }
+          }
+
+          // Add query identifier to results for diversity
+          queryResults.forEach(result => {
+            result._queryIndex = i;
+            result._queryText = currentQuery;
+          });
           
-          // Filter results in memory if we got any
-          if (results.length > 0) {
-            console.log(`Found ${results.length} results without filters, filtering in memory...`);
-            results = results.filter(doc => {
-              const matchesTopic = !filters.topic || doc.metadata?.topic === filters.topic;
-              const matchesCourseCode = !filters.courseCode || doc.metadata?.courseCode === filters.courseCode;
-              const matchesLevel = !filters.level || doc.metadata?.level === filters.level;
-              return matchesTopic && matchesCourseCode && matchesLevel;
+          allResults.push(...queryResults);
+        }
+
+        // Apply MMR diversity to the combined results
+        if (allResults.length > 0) {
+          console.log(`Applying MMR diversity to ${allResults.length} total results`);
+          allResults = mmrDiversify(
+            allResults, 
+            embedData.embeddings[0], // Use first query embedding for diversity
+            0.5, // lambda parameter
+            filters.max_chunks || 10
+          );
+          console.log(`After MMR diversity: ${allResults.length} results`);
+          
+          // Log first result for debugging
+          if (allResults.length > 0) {
+            const firstResult = allResults[0];
+            console.log('Vector search results:', {
+              count: allResults.length,
+              firstResult: {
+                hasChunkText: !!firstResult.chunk_text,
+                hasMetadata: !!firstResult.metadata,
+                hasSimilarity: !!firstResult.similarity,
+                embeddingPresent: !!firstResult.embedding,
+                similarityScore: firstResult.similarity,
+                textPreview: firstResult.chunk_text?.substring(0, 100) + '...',
+                queryIndex: firstResult._queryIndex,
+                queryText: firstResult._queryText
+              }
             });
-            console.log(`After in-memory filtering: ${results.length} results`);
           }
         }
 
         console.log('Vector search results:', {
-          count: results.length,
-          firstResult: results[0] ? {
-            hasChunkText: !!results[0].chunk_text,
-            hasMetadata: !!results[0].metadata,
-            hasSimilarity: !!results[0].$similarity,
-            embeddingPresent: !!results[0].embedding,
-            similarityScore: results[0].$similarity,
-            textPreview: results[0].chunk_text?.substring(0, 100)
+          count: allResults.length,
+          firstResult: allResults[0] ? {
+            hasChunkText: !!allResults[0].chunk_text,
+            hasMetadata: !!allResults[0].metadata,
+            hasSimilarity: !!allResults[0].$similarity,
+            embeddingPresent: !!allResults[0].embedding,
+            similarityScore: allResults[0].$similarity,
+            textPreview: allResults[0].chunk_text?.substring(0, 100),
+            queryIndex: allResults[0]._queryIndex,
+            queryText: allResults[0]._queryText
           } : null
         });
       } else {
@@ -135,18 +218,27 @@ export async function POST(request: Request) {
     }
 
     // If no vector search results or embedding service failed, return empty results
-    if (results.length === 0) {
+    if (allResults.length === 0) {
       console.log('No vector search results found, trying text search fallback...');
       
-      // Fallback to text search
+      // Fallback to text search with expanded queries
       const allDocs = await collection.find({}).toArray();
-      const textSearchResults = allDocs.filter(doc => 
-        doc.chunk_text?.toLowerCase().includes(query.toLowerCase())
-      );
+      const expandedQueries = expandQuery(query, filters.topic, filters.courseCode);
       
-      if (textSearchResults.length > 0) {
-        console.log(`Text search fallback found ${textSearchResults.length} results`);
-        results = textSearchResults.slice(0, filters.max_chunks || 5);
+      for (const expandedQuery of expandedQueries) {
+        const textSearchResults = allDocs.filter(doc => 
+          doc.chunk_text?.toLowerCase().includes(expandedQuery.toLowerCase())
+        );
+        
+        if (textSearchResults.length > 0) {
+          console.log(`Text search fallback found ${textSearchResults.length} results for query "${expandedQuery}"`);
+          allResults.push(...textSearchResults.slice(0, Math.ceil((filters.max_chunks || 5) / expandedQueries.length)));
+        }
+      }
+      
+      if (allResults.length > 0) {
+        console.log(`Text search fallback found ${allResults.length} total results`);
+        allResults = allResults.slice(0, filters.max_chunks || 5);
       } else {
         console.log('No text search results found either');
         return NextResponse.json({
@@ -164,12 +256,14 @@ export async function POST(request: Request) {
     }
 
     // Transform results to include similarity scores and enhanced metadata
-    const chunks = results.map(doc => ({
+    const chunks = allResults.map(doc => ({
       chunk_text: doc.chunk_text,
       metadata: {
         ...doc.metadata,
         author: doc.metadata?.author || doc.metadata?.professorName,
         relevance_score: doc.$similarity || 0.5, // Default score for text search results
+        query_index: doc._queryIndex,
+        query_text: doc._queryText,
         context: {
           section: doc.metadata?.section || 'main',
           topic_area: doc.metadata?.topic || 'general',
