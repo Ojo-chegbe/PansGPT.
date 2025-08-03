@@ -83,7 +83,9 @@ export async function POST(req: Request) {
       hasId: !!data.id,
       hasTitle: !!data.title,
       messageCount: data.messages?.length || 0,
-      userId: data.userId
+      userId: data.userId,
+      id: data.id,
+      title: data.title
     });
     
     // Allow creating conversations with no messages (for new conversations)
@@ -117,39 +119,44 @@ export async function POST(req: Request) {
         }))
       });
 
-      const updatedConversation = await prisma.conversation.update({
-        where: { id: data.id },
-        data: {
-          title: data.title,
-          messages: {
-            deleteMany: {},
-            create: data.messages.map((msg: any) => ({
-              content: msg.content,
-              role: msg.role,
-              userId: user.id,
-              createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined
-            })),
+      try {
+        const updatedConversation = await prisma.conversation.update({
+          where: { id: data.id },
+          data: {
+            title: data.title,
+            messages: {
+              deleteMany: {},
+              create: data.messages.map((msg: any) => ({
+                content: msg.content,
+                role: msg.role,
+                userId: user.id,
+                createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined
+              })),
+            },
           },
-        },
-        include: {
-          messages: true,
-        },
-      });
+          include: {
+            messages: true,
+          },
+        });
 
-      console.log('Conversation updated successfully:', {
-        conversationId: updatedConversation.id,
-        title: updatedConversation.title,
-        messageCount: updatedConversation.messages.length,
-        messages: updatedConversation.messages.map(msg => ({
-          id: msg.id,
-          content: msg.content?.substring(0, 50) + '...',
-          role: msg.role,
-          conversationId: msg.conversationId,
-          userId: msg.userId
-        }))
-      });
+        console.log('Conversation updated successfully:', {
+          conversationId: updatedConversation.id,
+          title: updatedConversation.title,
+          messageCount: updatedConversation.messages.length,
+          messages: updatedConversation.messages.map(msg => ({
+            id: msg.id,
+            content: msg.content?.substring(0, 50) + '...',
+            role: msg.role,
+            conversationId: msg.conversationId,
+            userId: msg.userId
+          }))
+        });
 
-      return NextResponse.json(updatedConversation);
+        return NextResponse.json(updatedConversation);
+      } catch (updateError) {
+        console.error('Error updating conversation:', updateError);
+        return NextResponse.json({ error: "Failed to update conversation" }, { status: 500 });
+      }
     }
 
     // Create new conversation
@@ -197,9 +204,9 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(newConversation);
-  } catch (error) {
-    console.error('Error saving conversation:', error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  } catch (createError) {
+    console.error('Error creating conversation:', createError);
+    return NextResponse.json({ error: "Failed to create conversation" }, { status: 500 });
   }
 }
 

@@ -341,14 +341,28 @@ export default function MainPage() {
           messages: latestMessages,
           userId: session.user.id
         };
+        
+        console.log('Saving conversation:', {
+          activeId,
+          hasActiveConv: !!activeConv,
+          messageCount: latestMessages.length,
+          payload
+        });
+        
         const saveResponse = await fetch("/api/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
           credentials: 'include',
         });
+        
         if (saveResponse.ok) {
           const savedConversation = await saveResponse.json();
+          console.log('Conversation saved successfully:', {
+            conversationId: savedConversation.id,
+            messageCount: savedConversation.messages?.length || 0
+          });
+          
           const updatedConversation = {
             id: savedConversation.id,
             name: savedConversation.title,
@@ -358,12 +372,31 @@ export default function MainPage() {
               createdAt: new Date(msg.createdAt)
             }))
           };
-          setConversations(prev => prev.map(c =>
-            c.id === activeId
-              ? updatedConversation
-              : c
-          ));
+          
+          // Update conversations list and set active conversation
+          setConversations(prev => {
+            const existingIndex = prev.findIndex(c => c.id === activeId);
+            if (existingIndex >= 0) {
+              // Update existing conversation
+              const updated = [...prev];
+              updated[existingIndex] = updatedConversation;
+              return updated;
+            } else {
+              // Add new conversation to the beginning
+              return [updatedConversation, ...prev];
+            }
+          });
+          
+          // Update active ID if it changed (for new conversations)
+          if (savedConversation.id !== activeId) {
+            setActiveId(savedConversation.id);
+          }
+          
           setMessages(updatedConversation.messages);
+        } else {
+          console.error('Failed to save conversation:', saveResponse.status, saveResponse.statusText);
+          const errorText = await saveResponse.text();
+          console.error('Error details:', errorText);
         }
       }
     } catch (error) {
@@ -615,14 +648,28 @@ export default function MainPage() {
           messages: latestMessages,
           userId: session.user.id
         };
+        
+        console.log('Saving conversation:', {
+          activeId,
+          hasActiveConv: !!activeConv,
+          messageCount: latestMessages.length,
+          payload
+        });
+        
         const saveResponse = await fetch("/api/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
           credentials: 'include',
         });
+        
         if (saveResponse.ok) {
           const savedConversation = await saveResponse.json();
+          console.log('Conversation saved successfully:', {
+            conversationId: savedConversation.id,
+            messageCount: savedConversation.messages?.length || 0
+          });
+          
           const updatedConversation = {
             id: savedConversation.id,
             name: savedConversation.title,
@@ -632,12 +679,31 @@ export default function MainPage() {
               createdAt: new Date(msg.createdAt)
             }))
           };
-          setConversations(prev => prev.map(c =>
-            c.id === activeId
-              ? updatedConversation
-              : c
-          ));
+          
+          // Update conversations list and set active conversation
+          setConversations(prev => {
+            const existingIndex = prev.findIndex(c => c.id === activeId);
+            if (existingIndex >= 0) {
+              // Update existing conversation
+              const updated = [...prev];
+              updated[existingIndex] = updatedConversation;
+              return updated;
+            } else {
+              // Add new conversation to the beginning
+              return [updatedConversation, ...prev];
+            }
+          });
+          
+          // Update active ID if it changed (for new conversations)
+          if (savedConversation.id !== activeId) {
+            setActiveId(savedConversation.id);
+          }
+          
           setMessages(updatedConversation.messages);
+        } else {
+          console.error('Failed to save conversation:', saveResponse.status, saveResponse.statusText);
+          const errorText = await saveResponse.text();
+          console.error('Error details:', errorText);
         }
       }
     } catch (error) {
