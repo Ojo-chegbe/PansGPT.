@@ -33,6 +33,19 @@ except Exception as e:
     logger.error(f"Failed to load model: {e}")
     model = None
 
+@app.on_event("startup")
+async def startup_event():
+    global model
+    logger.info("Starting embedding service...")
+    if model is None:
+        logger.info("Attempting to load model on startup...")
+        try:
+            model = SentenceTransformer(model_name)
+            logger.info("Model loaded successfully on startup")
+        except Exception as e:
+            logger.error(f"Failed to load model on startup: {e}")
+            model = None
+
 class EmbeddingRequest(BaseModel):
     texts: List[str]
 
@@ -46,9 +59,23 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    return {"status": "healthy", "model": model_name}
+    try:
+        if model is None:
+            raise HTTPException(status_code=503, detail="Model not loaded")
+        
+        # Test model with a simple embedding to ensure it's working
+        test_text = "test"
+        test_embedding = model.encode([test_text])
+        
+        return {
+            "status": "healthy", 
+            "model": model_name,
+            "model_loaded": model is not None,
+            "embedding_shape": test_embedding.shape if test_embedding is not None else None
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
 
 @app.post("/embed", response_model=EmbeddingResponse)
 async def generate_embeddings(request: EmbeddingRequest):

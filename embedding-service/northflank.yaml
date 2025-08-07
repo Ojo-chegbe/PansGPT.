@@ -5,7 +5,7 @@ services:
   - name: embedding-service
     type: service
     docker:
-      image: yourdockerhubusername/embedding-service:latest  # <-- Replace with your Docker Hub image
+      image: ojochegbe/embedding-service:latest  # <-- Updated to match GitHub workflow
       port: 8000
     env:
       - name: EMBEDDING_MODEL
