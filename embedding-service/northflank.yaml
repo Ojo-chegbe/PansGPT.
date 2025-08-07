@@ -5,7 +5,7 @@ services:
   - name: embedding-service
     type: service
     docker:
-      image: ojochegbe/embedding-service:latest  # <-- Updated to match GitHub workflow
+      image: ojochegbe/embedding-service:latest
       port: 8000
     env:
       - name: EMBEDDING_MODEL

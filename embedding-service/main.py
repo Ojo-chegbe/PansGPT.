@@ -22,29 +22,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load the embedding model
-model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
-logger.info(f"Loading embedding model: {model_name}")
-
-try:
-    model = SentenceTransformer(model_name)
-    logger.info("Model loaded successfully")
-except Exception as e:
-    logger.error(f"Failed to load model: {e}")
-    model = None
+# Global model variable
+model = None
+model_name = None
 
 @app.on_event("startup")
 async def startup_event():
-    global model
-    logger.info("Starting embedding service...")
-    if model is None:
-        logger.info("Attempting to load model on startup...")
-        try:
-            model = SentenceTransformer(model_name)
-            logger.info("Model loaded successfully on startup")
-        except Exception as e:
-            logger.error(f"Failed to load model on startup: {e}")
-            model = None
+    """Load the embedding model on startup"""
+    global model, model_name
+    
+    model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    logger.info(f"Loading embedding model: {model_name}")
+    
+    try:
+        model = SentenceTransformer(model_name)
+        logger.info("Model loaded successfully")
+    except Exception as e:
+        logger.error(f"Failed to load model: {e}")
+        model = None
 
 class EmbeddingRequest(BaseModel):
     texts: List[str]
@@ -59,23 +54,19 @@ async def root():
 
 @app.get("/health")
 async def health_check():
+    if model is None:
+        logger.error("Health check failed: Model not loaded")
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
     try:
-        if model is None:
-            raise HTTPException(status_code=503, detail="Model not loaded")
-        
-        # Test model with a simple embedding to ensure it's working
-        test_text = "test"
-        test_embedding = model.encode([test_text])
-        
-        return {
-            "status": "healthy", 
-            "model": model_name,
-            "model_loaded": model is not None,
-            "embedding_shape": test_embedding.shape if test_embedding is not None else None
-        }
+        # Test the model with a simple embedding
+        test_text = ["test"]
+        embeddings = model.encode(test_text, convert_to_tensor=False)
+        logger.info("Health check passed: Model is working correctly")
+        return {"status": "healthy", "model": model_name}
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
+        logger.error(f"Health check failed: Model error - {e}")
+        raise HTTPException(status_code=503, detail=f"Model error: {str(e)}")
 
 @app.post("/embed", response_model=EmbeddingResponse)
 async def generate_embeddings(request: EmbeddingRequest):
