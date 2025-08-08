@@ -1,8 +1,8 @@
 fastapi==0.104.1
 uvicorn==0.24.0
 sentence-transformers==2.2.2
-torch==1.13.1
-transformers==4.21.3
-huggingface_hub==0.10.1
+torch==1.12.1
+transformers==4.20.1
+huggingface_hub==0.8.1
 numpy==1.24.3
 pydantic==2.5.0
