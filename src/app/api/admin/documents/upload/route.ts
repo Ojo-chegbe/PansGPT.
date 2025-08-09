@@ -12,7 +12,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-const EMBEDDING_SERVICE_URL = process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || "http://100.29.9.155:8000";
+const EMBEDDING_SERVICE_URL = process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || "http://3.81.234.132:8000";
 
 // Utility function to sanitize filenames
 function sanitizeFilename(filename: string): string {

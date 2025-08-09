@@ -1,7 +1,7 @@
 // Embedding service configuration
 export const EMBEDDING_SERVICE_CONFIG = {
   // Production hosted service (use this for both dev and prod)
-  production: process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || 'http://100.29.9.155:8000',
+  production: process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || 'http://3.81.234.132:8000',
   
   // Get the appropriate URL based on environment
   getUrl: () => {

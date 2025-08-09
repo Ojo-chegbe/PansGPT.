@@ -5,7 +5,7 @@ async function main() {
     console.log('Testing search functionality...');
     
     // First get the embedding for our search query
-    const embedResponse = await fetch("http://localhost:8000/embed", {
+    const embedResponse = await fetch("http://3.81.234.132:8000/embed", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texts: ["What is a pipette and how is it used in titration?"] }),
