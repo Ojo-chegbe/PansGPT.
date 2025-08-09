@@ -332,7 +332,7 @@ IMPORTANT: For all chemical equations, formulas, and mathematical expressions, a
       contextPreview: context.substring(0, 200) + '...',
       userMessage: message
     });
-
+    
     // Streaming response
     const encoder = new TextEncoder();
     let firstChunk = true;
