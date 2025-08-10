@@ -43,6 +43,7 @@ export default function QuizSelectionForm() {
   });
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
   const [filteredTopics, setFilteredTopics] = useState<string[]>([]);
+  const [isLoadingTopics, setIsLoadingTopics] = useState(false);
 
   useEffect(() => {
     async function fetchUserLevel() {
@@ -77,18 +78,26 @@ export default function QuizSelectionForm() {
   // Fetch topics for suggestions
   useEffect(() => {
     async function fetchTopics() {
+      setIsLoadingTopics(true);
       try {
-        const res = await fetch('/api/documents/topics');
+        // If a course is selected, fetch topics for that course only
+        const url = formData.courseCode 
+          ? `/api/documents/topics?courseCode=${encodeURIComponent(formData.courseCode)}`
+          : '/api/documents/topics';
+        
+        const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
           setTopicOptions(data.topics || []);
         }
       } catch (err) {
         // Ignore errors for now
+      } finally {
+        setIsLoadingTopics(false);
       }
     }
     fetchTopics();
-  }, []);
+  }, [formData.courseCode]); // Re-fetch when course changes
 
   // Filter topics as user types
   useEffect(() => {
@@ -118,7 +127,8 @@ export default function QuizSelectionForm() {
         ...prev,
         courseCode: course.courseCode,
         courseTitle: course.courseTitle,
-        level: course.level
+        level: course.level,
+        topic: '' // Clear topic when course changes
       }));
     }
   };
@@ -231,7 +241,14 @@ export default function QuizSelectionForm() {
                 name="topic"
                 autoComplete="off"
               />
-              {filteredTopics.length > 0 && (
+              {isLoadingTopics ? (
+                <div className="absolute inset-y-0 right-0 flex items-center pr-2">
+                  <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </div>
+              ) : filteredTopics.length > 0 ? (
                 <Combobox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-[#232625] py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
                   {filteredTopics.map((topic) => (
                     <Combobox.Option
@@ -245,11 +262,18 @@ export default function QuizSelectionForm() {
                     </Combobox.Option>
                   ))}
                 </Combobox.Options>
-              )}
+              ) : formData.courseCode && !isLoadingTopics ? (
+                <div className="absolute z-10 mt-1 w-full rounded-md bg-[#232625] py-2 px-3 text-sm text-gray-400">
+                  No topics found for this course
+                </div>
+              ) : null}
             </div>
           </Combobox>
           <p className="mt-1 text-sm text-gray-400">
-            Leave blank for a general quiz on the course
+            {formData.courseCode 
+              ? `Topics available for ${formData.courseCode}. Leave blank for a general quiz on the course.`
+              : 'Select a course first to see available topics. Leave blank for a general quiz on the course.'
+            }
           </p>
         </div>
 

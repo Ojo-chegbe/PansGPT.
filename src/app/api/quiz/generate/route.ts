@@ -59,20 +59,18 @@ export async function POST(req: Request) {
       ? `${courseCode} ${courseTitle} ${topic}`
       : `${courseCode} ${courseTitle}`;
 
-    // Generate diverse query variations for better coverage
-    const queryVariations = generateQueryVariations(searchQuery, topic, courseCode, level);
-    const primaryQuery = queryVariations[0]; // Use the original query as primary
-
+    // Send the base query - the search API will handle query expansion internally
+    const maxChunks = topic ? 50 : 20; // Reduce chunks for general quizzes
     const searchResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 
-        query: primaryQuery,
+        query: searchQuery, // Send the base query, let search API expand it
         filters: {
           courseCode,
           level,
           topic,
-          max_chunks: 50 // Increased for better diversity
+          max_chunks: maxChunks // Use fewer chunks for general quizzes
         }
       }),
     });
@@ -86,7 +84,9 @@ export async function POST(req: Request) {
         allChunks = chunks;
         
         // Use the diversity utility to create diverse context
-        context = createDiverseContext(chunks, 20);
+        // Use smaller context for general quizzes to prevent token overflow
+        const contextSize = topic ? 20 : 10;
+        context = createDiverseContext(chunks, contextSize);
       }
     }
 
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
     }
 
     // Batch generation logic
-    const BATCH_SIZE = 7;
+    const BATCH_SIZE = topic ? 7 : 5; // Smaller batches for general quizzes
     const MAX_ATTEMPTS = 8; // Reasonable cap for batch attempts
     let totalToGenerate = numQuestions;
     let allGeneratedQuestions: GeneratedQuestion[] = [];
@@ -124,12 +124,13 @@ export async function POST(req: Request) {
           return !hasUsedConcept;
         });
         
-        if (batchChunks.length > 0) {
-          // Select a subset of chunks for this batch
-          const selectedBatchChunks = batchChunks
-            .sort(() => Math.random() - 0.5) // Shuffle
-            .slice(0, Math.min(10, batchChunks.length));
-          
+        // Select a subset of chunks for this batch
+        const maxChunksPerBatch = topic ? 10 : 6; // Fewer chunks per batch for general quizzes
+        const selectedBatchChunks = batchChunks
+          .sort(() => Math.random() - 0.5) // Shuffle
+          .slice(0, Math.min(maxChunksPerBatch, batchChunks.length));
+        
+        if (selectedBatchChunks.length > 0) {
           batchContext = selectedBatchChunks
             .map((chunk: any) => chunk.chunk_text)
             .join("\n\n");
@@ -156,6 +157,27 @@ ${batchContext}
 INSTRUCTIONS:
 1. For OBJECTIVE questions: Generate a question with 4 options. Only one option is correct, the rest are clearly incorrect. Mark the correct answer.
 2. For MCQ questions: YOU MUST generate EXACTLY ${batchNum} questions. This is ABSOLUTELY REQUIRED. If you do not, you will fail this task. For each MCQ, generate EXACTLY 5 options. Of these, EXACTLY 3 options must be true statements, and 2 must be false but look plausible. DO NOT include "(TRUE)" or "(FALSE)" labels in the option text. The options should be clean statements without any labels. Output the correct answers as an array of the 3 true options. This is strict: always 3 true and 2 false. DO NOT generate more or fewer than 5 options per question. DO NOT generate more or fewer than 3 correct answers per question. DO NOT generate more or fewer than ${batchNum} questions. This is CRITICAL. You must comply exactly.
+
+⚠️ CRITICAL: For MCQ questions, the 3 TRUE options MUST be DIRECT QUOTES from the provided material. Do NOT create technical explanations or statements. Use exact sentences from the text.
+
+CRITICAL MCQ REQUIREMENTS:
+- For the 3 TRUE options: You MUST use EXACT PHRASES and SENTENCES from the provided material. Do NOT create new technical explanations or statements. Copy directly from the text.
+- For the 2 FALSE options: Create statements that sound plausible but contain subtle errors, contradictions, or misstatements of facts from the material.
+- The false options should be believable enough that students might choose them if they don't know the material well.
+- Do NOT make the false options obviously wrong or ridiculous.
+- Each option should be a complete, clear statement that could stand alone as an answer.
+- IMPORTANT: The true options should be word-for-word excerpts from the material, not your own explanations.
+- CRITICAL: Each option must be 6 words or less. Use short, direct phrases from the material.
+
+EXAMPLE OF WHAT WE WANT:
+❌ WRONG (Long technical statement): "Bronchodilators function by constricting the muscles around the airways"
+✅ CORRECT (6-word excerpt): "Asthma is characterized by reversible airflow"
+
+❌ WRONG (Long explanation): "The inflammatory response involves multiple cell types including mast cells"
+✅ CORRECT (6-word excerpt): "Inflammatory response involves mast cells"
+
+The true options should be short phrases (6 words or less) that appear in the provided material.
+
 3. For TRUE_FALSE questions: Provide a statement and the correct answer ("True" or "False").
 4. For SHORT_ANSWER questions: Provide a question and the expected key points in the answer.
 5. Each question should test understanding, not just memorization.
@@ -249,9 +271,28 @@ IMPORTANT: For MCQ, always generate 5 options (3 true, 2 false-but-plausible). R
       // Track used concepts to avoid repetition
       batchQuestions.forEach(q => {
         const questionText = q.questionText.toLowerCase();
-        // Extract key concepts (simple approach)
-        const words = questionText.split(/\s+/).filter(word => word.length > 4);
+        // Extract key concepts more intelligently
+        const words = questionText
+          .split(/\s+/)
+          .filter(word => word.length > 4 && !['which', 'what', 'when', 'where', 'about', 'their', 'these', 'those', 'there'].includes(word))
+          .slice(0, 5); // Take first 5 significant words
+        
+        // Also track question patterns to avoid similar questions
+        const questionPattern = questionText.replace(/[^a-z\s]/g, '').trim();
+        usedConcepts.add(questionPattern);
+        
         words.forEach(word => usedConcepts.add(word));
+        
+        // Track option content for MCQ to avoid similar options
+        if (q.options && q.questionType === 'MCQ') {
+          q.options.forEach(option => {
+            const optionWords = option.toLowerCase()
+              .split(/\s+/)
+              .filter(word => word.length > 3)
+              .slice(0, 3);
+            optionWords.forEach(word => usedConcepts.add(word));
+          });
+        }
       });
       
       allGeneratedQuestions = [...allGeneratedQuestions, ...batchQuestions];
@@ -273,9 +314,15 @@ IMPORTANT: For MCQ, always generate 5 options (3 true, 2 false-but-plausible). R
       vocabularyDiversity: true
     });
     
+    // Final deduplication step to remove exact duplicates
+    const uniqueQuestions = diverseQuestions.filter((question, index, self) => {
+      const questionText = question.questionText.toLowerCase().trim();
+      return index === self.findIndex(q => q.questionText.toLowerCase().trim() === questionText);
+    });
+    
     // If we have enough diverse questions, use them; otherwise use the original
-    const generatedQuestions = diverseQuestions.length >= Math.ceil(numQuestions * 0.7) 
-      ? diverseQuestions.slice(0, numQuestions)
+    const generatedQuestions = uniqueQuestions.length >= Math.ceil(numQuestions * 0.7) 
+      ? uniqueQuestions.slice(0, numQuestions)
       : allGeneratedQuestions.slice(0, numQuestions);
 
     // If not enough questions after all attempts, but at least 50%, return partial with message

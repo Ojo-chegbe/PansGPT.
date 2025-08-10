@@ -26,11 +26,21 @@ function mmrDiversify(results: any[], queryEmbedding: number[], lambda: number =
     
     for (let i = 0; i < remaining.length; i++) {
       const relevance = remaining[i].$similarity || 0.5;
-      const diversity = Math.min(...selected.map(s => 
-        1 - (s.$similarity || 0.5) // Simple diversity measure
+      
+      // Calculate diversity based on query index differences
+      const queryIndexDiversity = Math.min(...selected.map(s => {
+        const selectedQueryIndex = s._queryIndex || 0;
+        const currentQueryIndex = remaining[i]._queryIndex || 0;
+        return Math.abs(selectedQueryIndex - currentQueryIndex) / 10; // Normalize by max expected queries
+      }));
+      
+      // Combine similarity diversity and query index diversity
+      const similarityDiversity = Math.min(...selected.map(s => 
+        1 - (s.$similarity || 0.5)
       ));
       
-      const mmrScore = lambda * relevance + (1 - lambda) * diversity;
+      const totalDiversity = (queryIndexDiversity + similarityDiversity) / 2;
+      const mmrScore = lambda * relevance + (1 - lambda) * totalDiversity;
       
       if (mmrScore > bestScore) {
         bestScore = mmrScore;
@@ -170,10 +180,34 @@ export async function POST(request: Request) {
         // Apply MMR diversity to the combined results
         if (allResults.length > 0) {
           console.log(`Applying MMR diversity to ${allResults.length} total results`);
+          
+          // Pre-process to ensure query index diversity
+          const queryIndexGroups = new Map();
+          allResults.forEach(result => {
+            const queryIndex = result._queryIndex || 0;
+            if (!queryIndexGroups.has(queryIndex)) {
+              queryIndexGroups.set(queryIndex, []);
+            }
+            queryIndexGroups.get(queryIndex).push(result);
+          });
+          
+          console.log(`Found results from ${queryIndexGroups.size} different query indexes`);
+          
+          // Take top results from each query index to ensure diversity
+          const maxPerQuery = Math.ceil((filters.max_chunks || 10) / queryIndexGroups.size);
+          const diverseResults = [];
+          for (const [queryIndex, results] of queryIndexGroups) {
+            const topResults = results
+              .sort((a: any, b: any) => (b.$similarity || 0) - (a.$similarity || 0))
+              .slice(0, maxPerQuery);
+            diverseResults.push(...topResults);
+          }
+          
+          // Apply MMR to the diverse results
           allResults = mmrDiversify(
-            allResults, 
+            diverseResults, 
             embedData.embeddings[0], // Use first query embedding for diversity
-            0.5, // lambda parameter
+            0.3, // Lower lambda to favor diversity more
             filters.max_chunks || 10
           );
           console.log(`After MMR diversity: ${allResults.length} results`);
