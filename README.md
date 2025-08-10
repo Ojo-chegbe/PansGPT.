@@ -19,10 +19,10 @@ You're absolutely right - we don't need Docker anymore since we're not using Nor
 3. **Test the service:**
    ```bash
    # Health check
-   curl http://localhost:8000/health
+   curl http://3.81.234.132:8000/health
    
    # Generate embeddings
-   curl -X POST http://localhost:8000/embed \
+   curl -X POST http://3.81.234.132:8000/embed \
      -H "Content-Type: application/json" \
      -d '{"texts": ["Hello world", "This is a test"]}'
    ```
@@ -86,8 +86,8 @@ You're absolutely right - we don't need Docker anymore since we're not using Nor
    - Run the service
 
 3. **Access your service:**
-   - Health: `http://YOUR_IP:8000/health`
-   - Embed: `http://YOUR_IP:8000/embed`
+   - Health: `http://3.81.234.132:8000/health`
+   - Embed: `http://3.81.234.132:8000/embed`
 
 ## 💡 **Why This is Better**
 

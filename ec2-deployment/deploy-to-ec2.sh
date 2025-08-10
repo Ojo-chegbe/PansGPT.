@@ -191,9 +191,9 @@ sudo systemctl status embedding-service --no-pager
 
 # Test the service
 echo "🧪 Testing the service..."
-if curl -f http://localhost:8000/health; then
+if curl -f http://3.81.234.132:8000/health; then
     echo "✅ Service is running successfully!"
-    echo "🌐 Your embedding service is now available at: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):8000"
+    echo "🌐 Your embedding service is now available at: http://3.81.234.132:8000"
 else
     echo "❌ Service health check failed. Check logs with: sudo journalctl -u embedding-service -f"
 fi

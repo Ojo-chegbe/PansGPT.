@@ -38,7 +38,7 @@ If you prefer to set up manually:
 
 1. **SSH into your EC2 instance:**
    ```bash
-   ssh -i your-key.pem ubuntu@YOUR_EC2_IP
+   ssh -i embedding-key-new.pem ubuntu@3.81.234.132
    ```
 
 2. **Run the deployment script:**
@@ -69,7 +69,7 @@ Update your embedding service URL in your application:
 ```typescript
 // In src/lib/embedding-service.ts
 export const EMBEDDING_SERVICE_CONFIG = {
-  production: 'http://YOUR_NEW_EC2_IP:8000',  // Update this line
+  production: 'http://3.81.234.132:8000',  // Updated to actual EC2 IP
   getUrl: () => EMBEDDING_SERVICE_CONFIG.production
 };
 ```
@@ -94,10 +94,10 @@ sudo systemctl stop embedding-service
 ### Health Monitoring:
 ```bash
 # Health check
-curl http://localhost:8000/health
+curl http://3.81.234.132:8000/health
 
 # Test embedding generation
-curl -X POST http://localhost:8000/embed \
+curl -X POST http://3.81.234.132:8000/embed \
   -H "Content-Type: application/json" \
   -d '{"texts": ["Hello world", "Test embedding"]}'
 ```
@@ -167,4 +167,4 @@ sudo netstat -tlnp | grep 8000
 - `deploy-to-ec2.sh` - Manual deployment script
 - `README.md` - This documentation
 
-Your embedding service will be running at `http://YOUR_EC2_IP:8000` within 3-5 minutes of launch! 
+Your embedding service will be running at `http://3.81.234.132:8000` within 3-5 minutes of launch! 
