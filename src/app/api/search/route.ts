@@ -3,7 +3,7 @@ import { getClient } from "@/lib/db";
 import { generateQueryVariations } from "@/lib/quiz-diversity";
 
 const ASTRA_DB_COLLECTION = process.env.ASTRA_DB_COLLECTION || 'document_chunks';
-const EMBEDDING_SERVICE_URL = process.env.EMBEDDING_SERVICE_URL || 'http://3.81.234.132:8000';
+const EMBEDDING_SERVICE_URL = process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || 'http://3.81.234.132:8000';
 
 // Query expansion function to generate diverse search queries
 function expandQuery(baseQuery: string, topic?: string, courseCode?: string): string[] {
